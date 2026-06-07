@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""Small SQLite query helper for LANtern Phase 1."""
+
+from __future__ import annotations
+
+import argparse
+import sqlite3
+import sys
+from datetime import datetime
+
+from lantern.common import DEFAULT_DB, connect_db
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", default=DEFAULT_DB, help=f"SQLite database path, default {DEFAULT_DB}")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("stats", help="show row counts")
+
+    devices = sub.add_parser("devices", help="show known devices")
+    devices.add_argument("--limit", type=int, default=100)
+
+    dns = sub.add_parser("dns-recent", help="show recent DNS queries")
+    dns.add_argument("--limit", type=int, default=30)
+    dns.add_argument("--client-ip")
+
+    top_dns = sub.add_parser("top-dns", help="show most queried domains")
+    top_dns.add_argument("--minutes", type=int, default=60)
+    top_dns.add_argument("--limit", type=int, default=20)
+
+    flows = sub.add_parser("flows-recent", help="show recent NetFlow records")
+    flows.add_argument("--limit", type=int, default=30)
+    flows.add_argument("--host", help="match source or destination address")
+
+    return parser.parse_args()
+
+
+def ts(value) -> str:
+    if value is None:
+        return "-"
+    return datetime.fromtimestamp(int(value)).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def print_rows(rows: list[sqlite3.Row], columns: list[str]) -> None:
+    widths = {column: len(column) for column in columns}
+    for row in rows:
+        for column in columns:
+            widths[column] = max(widths[column], len(str(row[column] if row[column] is not None else "-")))
+
+    print("  ".join(column.ljust(widths[column]) for column in columns))
+    print("  ".join("-" * widths[column] for column in columns))
+    for row in rows:
+        print("  ".join(str(row[column] if row[column] is not None else "-").ljust(widths[column]) for column in columns))
+
+
+def stats(conn: sqlite3.Connection) -> None:
+    tables = ("devices", "lease_observations", "dns_queries", "dhcp_events", "netflow_records", "netflow_templates")
+    for table in tables:
+        count = conn.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()["count"]
+        print(f"{table}: {count}")
+
+
+def devices(conn: sqlite3.Connection, limit: int) -> None:
+    rows = conn.execute(
+        """
+        SELECT
+            mac,
+            COALESCE(last_ip, '-') AS ip,
+            COALESCE(hostname, '-') AS hostname,
+            COALESCE(vendor, '-') AS vendor,
+            last_seen_unix,
+            lease_expires_unix
+        FROM devices
+        ORDER BY last_seen_unix DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    printable = []
+    for row in rows:
+        printable.append(
+            {
+                "mac": row["mac"],
+                "ip": row["ip"],
+                "hostname": row["hostname"],
+                "vendor": row["vendor"],
+                "last_seen": ts(row["last_seen_unix"]),
+                "lease_expires": ts(row["lease_expires_unix"]),
+            }
+        )
+    print_rows(printable, ["mac", "ip", "hostname", "vendor", "last_seen", "lease_expires"])
+
+
+def dns_recent(conn: sqlite3.Connection, limit: int, client_ip: str | None) -> None:
+    params: list[object] = []
+    where = ""
+    if client_ip:
+        where = "WHERE client_ip = ?"
+        params.append(client_ip)
+    params.append(limit)
+    rows = conn.execute(
+        f"""
+        SELECT ts_unix, client_ip, qtype, domain
+        FROM dns_queries
+        {where}
+        ORDER BY ts_unix DESC, id DESC
+        LIMIT ?
+        """,
+        params,
+    ).fetchall()
+    printable = [
+        {"time": ts(row["ts_unix"]), "client_ip": row["client_ip"], "qtype": row["qtype"], "domain": row["domain"]}
+        for row in rows
+    ]
+    print_rows(printable, ["time", "client_ip", "qtype", "domain"])
+
+
+def top_dns(conn: sqlite3.Connection, minutes: int, limit: int) -> None:
+    cutoff = int(datetime.now().timestamp()) - (minutes * 60)
+    rows = conn.execute(
+        """
+        SELECT domain, COUNT(*) AS queries, COUNT(DISTINCT client_ip) AS clients
+        FROM dns_queries
+        WHERE ts_unix >= ?
+        GROUP BY domain
+        ORDER BY queries DESC
+        LIMIT ?
+        """,
+        (cutoff, limit),
+    ).fetchall()
+    print_rows(rows, ["domain", "queries", "clients"])
+
+
+def flows_recent(conn: sqlite3.Connection, limit: int, host: str | None) -> None:
+    params: list[object] = []
+    where = ""
+    if host:
+        where = "WHERE src_addr = ? OR dst_addr = ?"
+        params.extend([host, host])
+    params.append(limit)
+    rows = conn.execute(
+        f"""
+        SELECT received_unix, src_addr, src_port, dst_addr, dst_port, protocol, packets, bytes
+        FROM netflow_records
+        {where}
+        ORDER BY received_unix DESC, id DESC
+        LIMIT ?
+        """,
+        params,
+    ).fetchall()
+    printable = [
+        {
+            "time": ts(row["received_unix"]),
+            "src": f"{row['src_addr'] or '-'}:{row['src_port'] or '-'}",
+            "dst": f"{row['dst_addr'] or '-'}:{row['dst_port'] or '-'}",
+            "proto": row["protocol"] if row["protocol"] is not None else "-",
+            "packets": row["packets"] if row["packets"] is not None else "-",
+            "bytes": row["bytes"] if row["bytes"] is not None else "-",
+        }
+        for row in rows
+    ]
+    print_rows(printable, ["time", "src", "dst", "proto", "packets", "bytes"])
+
+
+def main() -> int:
+    args = parse_args()
+    conn = connect_db(args.db)
+    if args.command == "stats":
+        stats(conn)
+    elif args.command == "devices":
+        devices(conn, args.limit)
+    elif args.command == "dns-recent":
+        dns_recent(conn, args.limit, args.client_ip)
+    elif args.command == "top-dns":
+        top_dns(conn, args.minutes, args.limit)
+    elif args.command == "flows-recent":
+        flows_recent(conn, args.limit, args.host)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

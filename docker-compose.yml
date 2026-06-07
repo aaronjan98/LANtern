@@ -1,0 +1,59 @@
+services:
+
+  # Tails /var/log/dnsmasq.log and stores DNS queries and DHCP events.
+  # Requires read access to the dnsmasq log (owned by dnsmasq:root, mode 660).
+  # The container runs as root so it can read the log file.
+  dnsmasq-ingest:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - /var/log/dnsmasq.log:/data/dnsmasq.log:ro
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.dnsmasq_ingest
+        --log /data/dnsmasq.log
+        --db /var/lib/lantern/lantern.db
+        --from-end
+
+  # Receives NetFlow v9 UDP packets from the router (e.g. softflowd on OpenWrt).
+  # Uses host networking so it can bind the UDP port directly.
+  netflow:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.netflow_collector
+        --listen 0.0.0.0
+        --port 2055
+        --db /var/lib/lantern/lantern.db
+
+  # Reads the dnsmasq DHCP lease file and updates the device inventory.
+  # Runs once every 5 minutes.
+  inventory:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - /var/lib/misc/dnsmasq.leases:/data/dnsmasq.leases:ro
+      - /usr/share/nmap/nmap-mac-prefixes:/data/oui.txt:ro
+      - lantern_data:/var/lib/lantern
+    command: >
+      sh -c "while true; do
+        python3 -m lantern.inventory_ingest
+          --leases /data/dnsmasq.leases
+          --db /var/lib/lantern/lantern.db
+          --oui /data/oui.txt;
+        sleep 300;
+      done"
+
+volumes:
+  lantern_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/lantern
