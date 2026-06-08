@@ -73,18 +73,29 @@ export default function DeviceDetail() {
 
   useEffect(() => {
     if (!decoded) return
-    Promise.all([
-      fetch(`/api/devices/${encodeURIComponent(decoded)}`).then((r) => r.json()),
-      fetch(`/api/dns/recent?limit=30&client_ip=${decoded}`).then((r) => r.json()),
-      fetch(`/api/dns/history?hours=24&bucket_minutes=60`).then((r) => r.json()),
-      fetch(`/api/flows/recent?limit=20&host=${decoded}`).then((r) => r.json()),
-    ]).then(([dev, dns, hist, fl]) => {
-      setDevice(dev.device)
-      setIpHistory(dev.ip_history)
-      setDnsRecent(dns)
-      setDnsHistory(hist)
-      setFlows(fl)
-    })
+    fetch(`/api/devices/${encodeURIComponent(decoded)}`)
+      .then((r) => r.json())
+      .then((dev) => {
+        setDevice(dev.device)
+        setIpHistory(dev.ip_history)
+        const ip = dev.device?.last_ip
+        return Promise.all([
+          ip
+            ? fetch(`/api/dns/recent?limit=30&client_ip=${ip}`).then((r) => r.json())
+            : Promise.resolve([]),
+          ip
+            ? fetch(`/api/dns/history?hours=24&bucket_minutes=60&client_ip=${ip}`).then((r) => r.json())
+            : Promise.resolve([]),
+          ip
+            ? fetch(`/api/flows/recent?limit=20&host=${ip}`).then((r) => r.json())
+            : Promise.resolve([]),
+        ])
+      })
+      .then(([dns, hist, fl]) => {
+        setDnsRecent(dns)
+        setDnsHistory(hist)
+        setFlows(fl)
+      })
   }, [decoded])
 
   if (!device) return <p className="text-muted-foreground">Loading…</p>
@@ -167,7 +178,7 @@ export default function DeviceDetail() {
       {/* DNS activity chart */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">DNS Activity — last 24h (network-wide)</CardTitle>
+          <CardTitle className="text-sm font-medium">DNS Activity — last 24h</CardTitle>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={140}>

@@ -81,21 +81,36 @@ def dns_clients(minutes: int = Query(default=60, le=10080)):
 def dns_history(
     bucket_minutes: int = Query(default=60, ge=1, le=1440),
     hours: int = Query(default=24, le=168),
+    client_ip: str | None = None,
 ):
     """Query volume bucketed over time — for the sparkline chart."""
     cutoff = int(time.time()) - (hours * 3600)
     bucket_secs = bucket_minutes * 60
     with get_db() as db:
-        rows = db.execute(
-            """
-            SELECT
-                (ts_unix / ?) * ? AS bucket,
-                COUNT(*) AS queries
-            FROM dns_queries
-            WHERE ts_unix >= ?
-            GROUP BY bucket
-            ORDER BY bucket ASC
-            """,
-            (bucket_secs, bucket_secs, cutoff),
-        ).fetchall()
+        if client_ip:
+            rows = db.execute(
+                """
+                SELECT
+                    (ts_unix / ?) * ? AS bucket,
+                    COUNT(*) AS queries
+                FROM dns_queries
+                WHERE ts_unix >= ? AND client_ip = ?
+                GROUP BY bucket
+                ORDER BY bucket ASC
+                """,
+                (bucket_secs, bucket_secs, cutoff, client_ip),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                """
+                SELECT
+                    (ts_unix / ?) * ? AS bucket,
+                    COUNT(*) AS queries
+                FROM dns_queries
+                WHERE ts_unix >= ?
+                GROUP BY bucket
+                ORDER BY bucket ASC
+                """,
+                (bucket_secs, bucket_secs, cutoff),
+            ).fetchall()
     return [dict(r) for r in rows]
