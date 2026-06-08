@@ -52,6 +52,30 @@ services:
         sleep 300;
       done"
 
+  # FastAPI backend — read-only access to the SQLite database.
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: lantern-api:latest
+    restart: unless-stopped
+    volumes:
+      - lantern_data:/var/lib/lantern:ro
+    environment:
+      - LANTERN_DB=/var/lib/lantern/lantern.db
+
+  # React UI served by nginx; proxies /api/ to the api container.
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    image: lantern-ui:latest
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
 volumes:
   lantern_data:
     driver: local
