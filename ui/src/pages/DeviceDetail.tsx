@@ -13,6 +13,7 @@ interface Device {
   vendor: string | null
   first_seen_unix: number | null
   last_seen_unix: number | null
+  label: string | null
   active: boolean
 }
 
@@ -88,7 +89,22 @@ export default function DeviceDetail() {
 
   if (!device) return <p className="text-muted-foreground">Loading…</p>
 
-  const displayName = device.hostname || device.mac
+  const displayName = device.label || device.hostname || device.mac
+  const [editingLabel, setEditingLabel] = useState(false)
+  const [labelInput, setLabelInput] = useState(device.label ?? "")
+
+  function saveLabel() {
+    fetch(`/api/devices/${encodeURIComponent(decoded)}/label`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: labelInput.trim() || null }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        setDevice((d) => d ? { ...d, label: data.label } : d)
+        setEditingLabel(false)
+      })
+  }
 
   return (
     <div className="space-y-6">
@@ -106,9 +122,34 @@ export default function DeviceDetail() {
               device.active ? "bg-green-500" : "bg-zinc-600"
             }`}
           />
-          <h1 className="text-2xl font-semibold">{displayName}</h1>
+          {editingLabel ? (
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                className="text-xl font-semibold bg-transparent border-b border-border focus:outline-none focus:border-primary"
+                value={labelInput}
+                onChange={(e) => setLabelInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveLabel(); if (e.key === "Escape") setEditingLabel(false) }}
+              />
+              <button onClick={saveLabel} className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground">Save</button>
+              <button onClick={() => setEditingLabel(false)} className="text-xs text-muted-foreground">Cancel</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 group">
+              <h1 className="text-2xl font-semibold">{displayName}</h1>
+              <button
+                onClick={() => { setLabelInput(device.label ?? ""); setEditingLabel(true) }}
+                className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 rounded hover:bg-accent"
+              >
+                {device.label ? "edit" : "add label"}
+              </button>
+            </div>
+          )}
           {device.active && <Badge className="bg-green-500/20 text-green-400 border-0">Active</Badge>}
         </div>
+        {device.label && device.hostname && (
+          <p className="text-sm text-muted-foreground mt-1 ml-5">{device.hostname}</p>
+        )}
       </div>
 
       {/* Meta cards */}

@@ -51,7 +51,7 @@ services:
     image: lantern-api:latest
     restart: unless-stopped
     volumes:
-      - lantern_data:/var/lib/lantern:ro
+      - lantern_data:/var/lib/lantern
     environment:
       - LANTERN_DB=/var/lib/lantern/lantern.db
 

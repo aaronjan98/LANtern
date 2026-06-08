@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS devices (
     lease_expires_unix INTEGER,
     client_id TEXT,
     source TEXT,
+    label TEXT,
     updated_unix INTEGER NOT NULL
 );
 
@@ -160,6 +161,12 @@ CREATE INDEX IF NOT EXISTS idx_netflow_records_dst_time
 """
 
 
+def _migrate(conn):
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(devices)")}
+    if "label" not in existing:
+        conn.execute("ALTER TABLE devices ADD COLUMN label TEXT")
+
+
 def connect_db(path: str = DEFAULT_DB) -> sqlite3.Connection:
     db_path = Path(path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -169,6 +176,7 @@ def connect_db(path: str = DEFAULT_DB) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
     _chmod_if_possible(db_path, 0o664)
     return conn

@@ -1,6 +1,6 @@
 import time
 from fastapi import APIRouter, HTTPException
-from api.db import get_db
+from api.db import get_db, get_db_rw
 
 router = APIRouter()
 
@@ -47,3 +47,23 @@ def get_device(mac: str):
         "device": _device_row(row),
         "ip_history": [dict(r) for r in ip_history],
     }
+
+from pydantic import BaseModel
+
+
+class LabelUpdate(BaseModel):
+    label: str | None = None
+
+
+@router.put("/devices/{mac}/label")
+def set_label(mac: str, body: LabelUpdate):
+    with get_db_rw() as db:
+        row = db.execute("SELECT mac FROM devices WHERE mac = ?", (mac,)).fetchone()
+        if row is None:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Device not found")
+        db.execute(
+            "UPDATE devices SET label = ?, updated_unix = ? WHERE mac = ?",
+            (body.label or None, int(__import__("time").time()), mac),
+        )
+    return {"mac": mac, "label": body.label or None}

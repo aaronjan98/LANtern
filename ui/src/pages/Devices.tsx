@@ -10,6 +10,7 @@ interface Device {
   vendor: string | null
   first_seen_unix: number | null
   last_seen_unix: number | null
+  label: string | null
   active: boolean
 }
 
@@ -22,7 +23,7 @@ function formatDate(unix: number | null) {
 }
 
 function displayName(d: Device) {
-  return d.hostname || d.mac
+  return d.label || d.hostname || d.mac
 }
 
 export default function Devices() {
@@ -43,6 +44,7 @@ export default function Devices() {
     const q = filter.toLowerCase()
     return (
       !q ||
+      (d.label ?? "").toLowerCase().includes(q) ||
       (d.hostname ?? "").toLowerCase().includes(q) ||
       (d.last_ip ?? "").includes(q) ||
       (d.vendor ?? "").toLowerCase().includes(q) ||
