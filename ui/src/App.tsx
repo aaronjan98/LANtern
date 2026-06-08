@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom"
 import Overview from "@/pages/Overview"
 import Devices from "@/pages/Devices"
+import DeviceDetail from "@/pages/DeviceDetail"
 import DNS from "@/pages/DNS"
 import Flows from "@/pages/Flows"
 
@@ -50,6 +51,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Overview />} />
             <Route path="/devices" element={<Devices />} />
+            <Route path="/devices/:mac" element={<DeviceDetail />} />
             <Route path="/dns" element={<DNS />} />
             <Route path="/flows" element={<Flows />} />
           </Routes>
