@@ -70,6 +70,8 @@ export default function DeviceDetail() {
   const [dnsRecent, setDnsRecent] = useState<DnsQuery[]>([])
   const [dnsHistory, setDnsHistory] = useState<HistoryBucket[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
+  const [editingLabel, setEditingLabel] = useState(false)
+  const [labelInput, setLabelInput] = useState("")
 
   useEffect(() => {
     if (!decoded) return
@@ -78,6 +80,7 @@ export default function DeviceDetail() {
       .then((dev) => {
         setDevice(dev.device)
         setIpHistory(dev.ip_history)
+        setLabelInput(dev.device?.label ?? "")
         const ip = dev.device?.last_ip
         return Promise.all([
           ip
@@ -101,8 +104,6 @@ export default function DeviceDetail() {
   if (!device) return <p className="text-muted-foreground">Loading…</p>
 
   const displayName = device.label || device.hostname || device.mac
-  const [editingLabel, setEditingLabel] = useState(false)
-  const [labelInput, setLabelInput] = useState(device.label ?? "")
 
   function saveLabel() {
     fetch(`/api/devices/${encodeURIComponent(decoded)}/label`, {
