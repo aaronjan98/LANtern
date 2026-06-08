@@ -31,7 +31,7 @@ services:
         --port 2055
         --db /var/lib/lantern/lantern.db
 
-  # Reads the dnsmasq DHCP lease file and updates the device inventory.
+  # Reads the dnsmasq DHCP lease file and static host entries, updates device inventory.
   # Runs once every 5 minutes.
   inventory:
     build: .
@@ -39,12 +39,14 @@ services:
     restart: unless-stopped
     volumes:
       - /var/lib/misc/dnsmasq.leases:/data/dnsmasq.leases:ro
+      - /etc/dnsmasq.d/dhcp.conf:/data/dhcp.conf:ro
       - /usr/share/nmap/nmap-mac-prefixes:/data/oui.txt:ro
       - lantern_data:/var/lib/lantern
     command: >
       sh -c "while true; do
         python3 -m lantern.inventory_ingest
           --leases /data/dnsmasq.leases
+          --dhcp-conf /data/dhcp.conf
           --db /var/lib/lantern/lantern.db
           --oui /data/oui.txt;
         sleep 300;
