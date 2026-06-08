@@ -1,8 +1,6 @@
 services:
 
   # Tails /var/log/dnsmasq.log and stores DNS queries and DHCP events.
-  # Requires read access to the dnsmasq log (owned by dnsmasq:root, mode 660).
-  # The container runs as root so it can read the log file.
   dnsmasq-ingest:
     build: .
     image: lantern:latest
@@ -16,8 +14,7 @@ services:
         --db /var/lib/lantern/lantern.db
         --from-end
 
-  # Receives NetFlow v9 UDP packets from the router (e.g. softflowd on OpenWrt).
-  # Uses host networking so it can bind the UDP port directly.
+  # Receives NetFlow v9 UDP packets from the router.
   netflow:
     build: .
     image: lantern:latest
@@ -31,8 +28,7 @@ services:
         --port 2055
         --db /var/lib/lantern/lantern.db
 
-  # Reads the dnsmasq DHCP lease file and static host entries, updates device inventory.
-  # Runs once every 5 minutes.
+  # Reads DHCP lease file and static host entries, updates device inventory every 5 min.
   inventory:
     build: .
     image: lantern:latest
@@ -42,15 +38,10 @@ services:
       - /etc/dnsmasq.d/dhcp.conf:/data/dhcp.conf:ro
       - /usr/share/nmap/nmap-mac-prefixes:/data/oui.txt:ro
       - lantern_data:/var/lib/lantern
-    command: >
-      sh -c "while true; do
-        python3 -m lantern.inventory_ingest
-          --leases /data/dnsmasq.leases
-          --dhcp-conf /data/dhcp.conf
-          --db /var/lib/lantern/lantern.db
-          --oui /data/oui.txt;
-        sleep 300;
-      done"
+    command:
+      - sh
+      - -c
+      - "while true; do python3 -m lantern.inventory_ingest --leases /data/dnsmasq.leases --dhcp-conf /data/dhcp.conf --db /var/lib/lantern/lantern.db --oui /data/oui.txt; sleep 300; done"
 
   # FastAPI backend — read-only access to the SQLite database.
   api:
