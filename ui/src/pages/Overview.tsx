@@ -121,18 +121,20 @@ export default function Overview() {
                 tickFormatter={(v) =>
                   new Date(v * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                 }
-                tick={{ fontSize: 11 }}
-                stroke="hsl(var(--muted-foreground))"
+                tick={{ fontSize: 11, fill: "#71717a" }}
+                stroke="#3f3f46"
               />
-              <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" width={40} />
+              <YAxis tick={{ fontSize: 11, fill: "#71717a" }} stroke="#3f3f46" width={40} />
               <Tooltip
                 labelFormatter={(v) => new Date(Number(v) * 1000).toLocaleTimeString()}
-                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
+                contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "6px" }}
+                labelStyle={{ color: "#a1a1aa" }}
+                itemStyle={{ color: "#e4e4e7" }}
               />
               <Line
                 type="monotone"
                 dataKey="queries"
-                stroke="hsl(var(--primary))"
+                stroke="#818cf8"
                 dot={false}
                 strokeWidth={2}
               />
