@@ -43,6 +43,36 @@ services:
       - -c
       - "while true; do python3 -m lantern.inventory_ingest --leases /data/dnsmasq.leases --dhcp-conf /data/dhcp.conf --db /var/lib/lantern/lantern.db --oui /data/oui.txt; sleep 300; done"
 
+  # Tails the nginx reverse-proxy access logs (service-usage signal for the
+  # activity oracle). Reverse-proxy compose bind-mounts its /var/log/nginx to
+  # /opt/reverse-proxy/logs; we mount that read-only and tail every *.log.
+  nginx-ingest:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - /opt/reverse-proxy/logs:/data/nginx-logs:ro
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.nginx_ingest
+        --log /data/nginx-logs
+        --db /var/lib/lantern/lantern.db
+        --from-end
+
+  # Shadow-mode activity oracle: logs what it *would* decide (idle/busy) to
+  # activity_verdicts every 5 min, without gating anything. Lets us validate the
+  # thresholds against real usage before wiring the SnapRAID sync / Deco reboot.
+  activity-shadow:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.activity_shadow
+        --db /var/lib/lantern/lantern.db
+        --interval 300
+
   # FastAPI backend — read-only access to the SQLite database.
   api:
     build:

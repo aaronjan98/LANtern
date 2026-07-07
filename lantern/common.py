@@ -158,6 +158,44 @@ CREATE INDEX IF NOT EXISTS idx_netflow_records_src_time
     ON netflow_records(src_addr, received_unix);
 CREATE INDEX IF NOT EXISTS idx_netflow_records_dst_time
     ON netflow_records(dst_addr, received_unix);
+
+-- Reverse-proxy access log (LANtern's service-usage vantage point). Every
+-- hosted service sits behind one nginx on sweetpea, so this captures local,
+-- Tailscale, and Cloudflare access alike -- traffic NetFlow can't see because
+-- local client<->server flows are east-west switched. Fed by
+-- lantern.nginx_ingest, read by is_homelab_idle in lantern.activity.
+CREATE TABLE IF NOT EXISTS http_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix INTEGER NOT NULL,
+    client_ip TEXT,
+    method TEXT,
+    path TEXT,
+    status INTEGER,
+    bytes INTEGER,
+    user_agent TEXT,
+    referer TEXT,
+    x_forwarded_for TEXT,
+    raw TEXT NOT NULL,
+    ingested_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_http_requests_time ON http_requests(ts_unix);
+
+-- Shadow-mode log of the activity oracle's verdicts (lantern.activity_shadow).
+-- Records what the oracle *would* decide, without acting, so thresholds can be
+-- validated against real usage before any maintenance job is gated on them.
+CREATE TABLE IF NOT EXISTS activity_verdicts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix INTEGER NOT NULL,
+    signal TEXT NOT NULL,          -- 'internet' | 'homelab'
+    idle INTEGER NOT NULL,         -- 1 = idle, 0 = busy
+    headline TEXT,                 -- e.g. '0.42 MB' or '3 real requests'
+    evidence_json TEXT NOT NULL,   -- full evidence dict from lantern.activity
+    ingested_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_verdicts_time
+    ON activity_verdicts(ts_unix);
+CREATE INDEX IF NOT EXISTS idx_activity_verdicts_signal_time
+    ON activity_verdicts(signal, ts_unix);
 """
 
 

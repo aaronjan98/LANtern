@@ -6,6 +6,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api/ /app/api/
+# The activity endpoints import the oracle (lantern.activity); it depends only
+# on the stdlib, so the package comes along without extra requirements.
+COPY lantern/ /app/lantern/
 
 ENV LANTERN_DB=/var/lib/lantern/lantern.db
 
