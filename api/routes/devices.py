@@ -25,9 +25,36 @@ def list_devices():
     return [_device_row(r) for r in rows]
 
 
-@router.get("/devices/{mac}")
-def get_device(mac: str):
+def _resolve_mac(db, ident: str) -> str | None:
+    """Map a device identifier to a MAC (the table's key).
+
+    Devices are keyed on MAC, but callers that only know an IP (the DNS page —
+    a DNS query carries a client_ip, never a MAC) pass one here. Try the MAC
+    directly, then fall back to the device currently holding that IP, then the
+    most recent lease that used it (covers a device that has since changed IP).
+    """
+    row = db.execute("SELECT mac FROM devices WHERE mac = ?", (ident,)).fetchone()
+    if row:
+        return row["mac"]
+    row = db.execute(
+        "SELECT mac FROM devices WHERE last_ip = ? ORDER BY last_seen_unix DESC LIMIT 1",
+        (ident,),
+    ).fetchone()
+    if row:
+        return row["mac"]
+    row = db.execute(
+        "SELECT mac FROM lease_observations WHERE ip = ? ORDER BY observed_unix DESC LIMIT 1",
+        (ident,),
+    ).fetchone()
+    return row["mac"] if row else None
+
+
+@router.get("/devices/{ident}")
+def get_device(ident: str):
     with get_db() as db:
+        mac = _resolve_mac(db, ident)
+        if mac is None:
+            raise HTTPException(status_code=404, detail="Device not found")
         row = db.execute("SELECT * FROM devices WHERE mac = ?", (mac,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Device not found")

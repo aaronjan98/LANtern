@@ -66,6 +66,7 @@ export default function DeviceDetail() {
   const decoded = decodeURIComponent(mac ?? "")
 
   const [device, setDevice] = useState<Device | null>(null)
+  const [notFound, setNotFound] = useState(false)
   const [ipHistory, setIpHistory] = useState<IpEntry[]>([])
   const [dnsRecent, setDnsRecent] = useState<DnsQuery[]>([])
   const [dnsHistory, setDnsHistory] = useState<HistoryBucket[]>([])
@@ -75,8 +76,13 @@ export default function DeviceDetail() {
 
   useEffect(() => {
     if (!decoded) return
+    setNotFound(false)
+    setDevice(null)
     fetch(`/api/devices/${encodeURIComponent(decoded)}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("device not found")
+        return r.json()
+      })
       .then((dev) => {
         setDevice(dev.device)
         setIpHistory(dev.ip_history)
@@ -99,7 +105,24 @@ export default function DeviceDetail() {
         setDnsHistory(hist)
         setFlows(fl)
       })
+      .catch(() => setNotFound(true))
   }, [decoded])
+
+  if (notFound)
+    return (
+      <div className="space-y-3">
+        <button
+          onClick={() => navigate("/devices")}
+          className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+        >
+          ← Devices
+        </button>
+        <p className="text-muted-foreground">
+          No device found for <span className="font-mono">{decoded}</span>. It may
+          be an off-network address or one that never held a DHCP lease.
+        </p>
+      </div>
+    )
 
   if (!device) return <p className="text-muted-foreground">Loading…</p>
 
