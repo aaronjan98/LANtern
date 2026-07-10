@@ -74,9 +74,34 @@ HOMELAB_SERVER_SIDE_IPS = {
     "10.0.50.83",   # qwerty — its own COOLWSD/crawler jobs originate here
     "172.18.0.1",   # docker bridge gateway (internal health/proxy hops)
 }
-# A single request to any of these = someone is actively streaming right now.
+
+# LANtern's own UI polls these every 5-30s. When the dashboard is left open in a
+# LAN browser its client_ip is NOT one of the server-side IPs above, so that
+# self-traffic would otherwise read as "the homelab is busy" — a feedback loop.
+# It never touches the media array, so it is never real usage. Matched as path
+# prefixes because Immich/Nextcloud also live under /api; we drop only LANtern's
+# own routes, not theirs. (2026-07-10)
+HOMELAB_SELF_PATH_LIKE = (
+    "/api/devices%", "/api/dns%", "/api/flows%",
+    "/api/stats%", "/api/activity%", "/api/health%",
+)
+
+# WebDAV/CalDAV/CardDAV sync + CORS preflight methods: automated metadata
+# chatter (Nextcloud calendar/contacts sync fires from every device every few
+# minutes, returning 207 so the 4xx filter misses it). Never content transfer,
+# never attended use. GET/PUT/POST still count — real file up/downloads, Immich,
+# and Jellyfin all use those. (2026-07-10)
+HOMELAB_SYNC_METHODS = ("PROPFIND", "REPORT", "OPTIONS", "PROPPATCH")
+
+# Real content transfer = someone is actively streaming AND reading the disk
+# array right now — the thing a SnapRAID sync must not collide with.
+# NOTE: the bare /Sessions/Playing* heartbeat was REMOVED here on 2026-07-10.
+# A paused or abandoned session keeps POSTing it (~every 10s) with zero disk
+# I/O, which made quiet nights read as "busy". A genuinely active stream still
+# fetches /videos|/Videos|/Audio segments, so it is still caught; a merely
+# paused one is now correctly treated as idle. (Confirmed against a real remote
+# session — the overnight streamer was a household user watching via Cloudflare.)
 HOMELAB_STREAMING_PATH_LIKE = (
-    "%/Sessions/Playing%",    # Jellyfin/Emby playback heartbeat (~every 10s)
     "%/videos/%", "%/Videos/%", "%/Audio/%",
     "%getTranscodeDecision%", "%/stream%",
 )
@@ -186,9 +211,10 @@ def is_homelab_idle(conn: sqlite3.Connection, now: int | None = None) -> tuple[b
 
     Signal: nginx access log (table http_requests) — the one reverse proxy every
     service sits behind, so it sees local, Tailscale, and Cloudflare access alike.
-    We drop background chatter (keepalive UAs + server-side source IPs), then a
-    window is BUSY if anyone is streaming (a playback-signature request) or the
-    real user-request count crosses the threshold.
+    We drop background/non-usage chatter — keepalive UAs, server-side source IPs,
+    LANtern's own dashboard polling, and any 4xx/5xx (bot probes + broken polls) —
+    then a window is BUSY if anyone is streaming (a content-transfer request) or
+    the real user-request count crosses the threshold.
 
     IDLE requires every window in the lookback to be non-busy.
     """
@@ -197,6 +223,8 @@ def is_homelab_idle(conn: sqlite3.Connection, now: int | None = None) -> tuple[b
 
     ua_filter = " AND ".join("user_agent NOT LIKE ?" for _ in HOMELAB_BACKGROUND_UA_LIKE)
     ip_ph = ",".join("?" for _ in HOMELAB_SERVER_SIDE_IPS)
+    self_filter = " AND ".join("path NOT LIKE ?" for _ in HOMELAB_SELF_PATH_LIKE)
+    method_ph = ",".join("?" for _ in HOMELAB_SYNC_METHODS)
     stream_expr = " OR ".join("path LIKE ?" for _ in HOMELAB_STREAMING_PATH_LIKE)
     sql = f"""
         SELECT
@@ -205,12 +233,19 @@ def is_homelab_idle(conn: sqlite3.Connection, now: int | None = None) -> tuple[b
             SUM(CASE WHEN {stream_expr} THEN 1 ELSE 0 END) AS streaming
         FROM http_requests
         WHERE ts_unix >= ? AND ts_unix < ?
+          -- successful requests only: a 4xx/5xx is a bot probe or a broken
+          -- background poll, not a person using a service (2026-07-10).
+          AND (status IS NULL OR status < 400)
           AND (user_agent IS NULL OR ({ua_filter}))
           AND (client_ip IS NULL OR client_ip NOT IN ({ip_ph}))
+          AND (path IS NULL OR ({self_filter}))
+          -- WebDAV/CalDAV sync + CORS preflights: metadata chatter, not usage.
+          AND (method IS NULL OR method NOT IN ({method_ph}))
         GROUP BY win
     """
     params = [start, bucket_sec, *HOMELAB_STREAMING_PATH_LIKE, start, now,
-              *HOMELAB_BACKGROUND_UA_LIKE, *sorted(HOMELAB_SERVER_SIDE_IPS)]
+              *HOMELAB_BACKGROUND_UA_LIKE, *sorted(HOMELAB_SERVER_SIDE_IPS),
+              *HOMELAB_SELF_PATH_LIKE, *HOMELAB_SYNC_METHODS]
     rows = conn.execute(sql, params).fetchall()
 
     windows = [{"real_reqs": 0, "streaming": 0} for _ in range(n_windows)]
