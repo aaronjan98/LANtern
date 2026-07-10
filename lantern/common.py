@@ -196,6 +196,40 @@ CREATE INDEX IF NOT EXISTS idx_activity_verdicts_time
     ON activity_verdicts(ts_unix);
 CREATE INDEX IF NOT EXISTS idx_activity_verdicts_signal_time
     ON activity_verdicts(signal, ts_unix);
+
+-- Security vantage point: SSH auth events (from /var/log/auth.log) and fail2ban
+-- ban/unban actions (from /var/log/fail2ban.log), fed by lantern.security_ingest.
+-- Together they answer "who is trying to get in, who got in, and is fail2ban
+-- actually catching the attackers?" `host` scopes to a machine for future
+-- multi-host ingest (v1 is sweetpea only).
+CREATE TABLE IF NOT EXISTS ssh_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix INTEGER NOT NULL,
+    event TEXT NOT NULL,           -- accepted | failed | invalid | preauth
+    username TEXT,
+    src_ip TEXT,
+    port INTEGER,
+    method TEXT,                   -- publickey | password | ...
+    host TEXT,
+    raw TEXT NOT NULL,
+    ingested_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ssh_events_time ON ssh_events(ts_unix);
+CREATE INDEX IF NOT EXISTS idx_ssh_events_srcip_time ON ssh_events(src_ip, ts_unix);
+CREATE INDEX IF NOT EXISTS idx_ssh_events_event_time ON ssh_events(event, ts_unix);
+
+CREATE TABLE IF NOT EXISTS fail2ban_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix INTEGER NOT NULL,
+    jail TEXT NOT NULL,
+    action TEXT NOT NULL,          -- Found | Ban | Unban | Increase Ban | Restore Ban
+    ip TEXT,
+    host TEXT,
+    raw TEXT NOT NULL,
+    ingested_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_fail2ban_events_time ON fail2ban_events(ts_unix);
+CREATE INDEX IF NOT EXISTS idx_fail2ban_events_ip_time ON fail2ban_events(ip, ts_unix);
 """
 
 

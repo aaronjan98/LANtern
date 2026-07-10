@@ -59,6 +59,25 @@ services:
         --db /var/lib/lantern/lantern.db
         --from-end
 
+  # Tails SSH auth + fail2ban logs (LANtern's security vantage point). Mounts the
+  # host logs read-only; the container runs as root so it can read the adm-group
+  # files. No --from-end: on first run it ingests the current logs' history so the
+  # Security view has data (and the ongoing brute-force attempts) immediately.
+  security-ingest:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - /var/log/auth.log:/data/auth.log:ro
+      - /var/log/fail2ban.log:/data/fail2ban.log:ro
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.security_ingest
+        --auth-log /data/auth.log
+        --fail2ban-log /data/fail2ban.log
+        --db /var/lib/lantern/lantern.db
+        --host sweetpea
+
   # Shadow-mode activity oracle: logs what it *would* decide (idle/busy) to
   # activity_verdicts every 5 min, without gating anything. Lets us validate the
   # thresholds against real usage before wiring the SnapRAID sync / Deco reboot.

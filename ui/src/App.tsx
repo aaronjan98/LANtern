@@ -5,12 +5,14 @@ import Devices from "@/pages/Devices"
 import DeviceDetail from "@/pages/DeviceDetail"
 import DNS from "@/pages/DNS"
 import Flows from "@/pages/Flows"
+import Security from "@/pages/Security"
 
 const navItems = [
   { to: "/", label: "Overview", exact: true },
   { to: "/devices", label: "Devices" },
   { to: "/dns", label: "DNS" },
   { to: "/flows", label: "Flows" },
+  { to: "/security", label: "Security" },
 ]
 
 function Sidebar() {
@@ -56,6 +58,7 @@ export default function App() {
               <Route path="/devices/:mac" element={<DeviceDetail />} />
               <Route path="/dns" element={<DNS />} />
               <Route path="/flows" element={<Flows />} />
+              <Route path="/security" element={<Security />} />
             </Routes>
           </main>
         </div>
