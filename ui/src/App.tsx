@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom"
+import { DevicesProvider } from "@/lib/devices"
 import Overview from "@/pages/Overview"
 import Devices from "@/pages/Devices"
 import DeviceDetail from "@/pages/DeviceDetail"
@@ -45,18 +46,20 @@ function Sidebar() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="flex h-screen bg-background text-foreground">
-        <Sidebar />
-        <main className="flex-1 overflow-auto p-6">
-          <Routes>
-            <Route path="/" element={<Overview />} />
-            <Route path="/devices" element={<Devices />} />
-            <Route path="/devices/:mac" element={<DeviceDetail />} />
-            <Route path="/dns" element={<DNS />} />
-            <Route path="/flows" element={<Flows />} />
-          </Routes>
-        </main>
-      </div>
+      <DevicesProvider>
+        <div className="flex h-screen bg-background text-foreground">
+          <Sidebar />
+          <main className="flex-1 overflow-auto p-6">
+            <Routes>
+              <Route path="/" element={<Overview />} />
+              <Route path="/devices" element={<Devices />} />
+              <Route path="/devices/:mac" element={<DeviceDetail />} />
+              <Route path="/dns" element={<DNS />} />
+              <Route path="/flows" element={<Flows />} />
+            </Routes>
+          </main>
+        </div>
+      </DevicesProvider>
     </BrowserRouter>
   )
 }

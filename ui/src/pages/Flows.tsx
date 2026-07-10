@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
-import { useNavigate } from "react-router-dom"
+import { DeviceLabel, useDevices } from "@/lib/devices"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -54,13 +54,8 @@ function fmtTime(unix: number) {
   })
 }
 
-function addrLabel(addr: string | null, port: number | null) {
-  if (!addr) return "—"
-  return port ? `${addr}:${port}` : addr
-}
-
 export default function Flows() {
-  const navigate = useNavigate()
+  const { nameForIp } = useDevices()
   const [flows, setFlows] = useState<Flow[]>([])
   const [talkers, setTalkers] = useState<TopTalkers>({ top_sources: [], top_destinations: [] })
   const [hostFilter, setHostFilter] = useState("")
@@ -114,7 +109,10 @@ export default function Flows() {
                     tick={{ fontSize: 10, fill: "#71717a" }} stroke="#3f3f46" />
                   <YAxis type="category" dataKey="addr" width={120}
                     tick={{ fontSize: 10, fill: "#71717a" }} stroke="#3f3f46"
-                    tickFormatter={(v: string) => v.length > 15 ? v.slice(0, 14) + "…" : v} />
+                    tickFormatter={(v: string) => {
+                      const n = nameForIp(v)
+                      return n.length > 15 ? n.slice(0, 14) + "…" : n
+                    }} />
                   <Tooltip
                     contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "6px" }}
                     labelStyle={{ color: "#e4e4e7" }} itemStyle={{ color: "#a1a1aa" }}
@@ -164,20 +162,16 @@ export default function Flows() {
                   <tr key={i} className="hover:bg-accent/30">
                     <td className="px-4 py-2 text-muted-foreground">{fmtTime(f.received_unix)}</td>
                     <td className="px-4 py-2">
-                      <span
-                        className="cursor-pointer hover:text-primary"
-                        onClick={() => f.src_addr && navigate(`/devices/${encodeURIComponent(f.src_addr)}`)}
-                      >
-                        {addrLabel(f.src_addr, f.src_port)}
-                      </span>
+                      <DeviceLabel ip={f.src_addr} mono />
+                      {f.src_addr && f.src_port ? (
+                        <span className="text-muted-foreground">:{f.src_port}</span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-2">
-                      <span
-                        className="cursor-pointer hover:text-primary"
-                        onClick={() => f.dst_addr && navigate(`/devices/${encodeURIComponent(f.dst_addr)}`)}
-                      >
-                        {addrLabel(f.dst_addr, f.dst_port)}
-                      </span>
+                      <DeviceLabel ip={f.dst_addr} mono />
+                      {f.dst_addr && f.dst_port ? (
+                        <span className="text-muted-foreground">:{f.dst_port}</span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-2">
                       <span

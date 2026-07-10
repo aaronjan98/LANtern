@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
+import { DeviceLabel } from "@/lib/devices"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   LineChart,
@@ -49,13 +51,18 @@ function StatCard({
   title,
   value,
   sub,
+  onClick,
 }: {
   title: string
   value: string | number
   sub?: string
+  onClick?: () => void
 }) {
   return (
-    <Card>
+    <Card
+      onClick={onClick}
+      className={onClick ? "cursor-pointer hover:border-primary/60 transition-colors" : undefined}
+    >
       <CardHeader className="pb-1">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
@@ -70,6 +77,7 @@ function StatCard({
 }
 
 export default function Overview() {
+  const navigate = useNavigate()
   const [stats, setStats] = useState<Stats | null>(null)
   const [history, setHistory] = useState<DnsHistoryBucket[]>([])
   const [feed, setFeed] = useState<DnsQuery[]>([])
@@ -98,7 +106,7 @@ export default function Overview() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title="Active Devices" value={stats.active_devices} sub={`${stats.devices} total`} />
+        <StatCard title="Active Devices" value={stats.active_devices} sub={`${stats.devices} total`} onClick={() => navigate("/devices")} />
         <StatCard title="DNS Queries Today" value={stats.dns_queries_today.toLocaleString()} />
         <StatCard
           title="Top Domain (1h)"
@@ -155,8 +163,8 @@ export default function Overview() {
                 <span className="text-muted-foreground w-20 shrink-0 tabular-nums">
                   {formatTime(q.ts_unix)}
                 </span>
-                <span className="text-muted-foreground w-28 shrink-0 tabular-nums truncate">
-                  {q.client_ip}
+                <span className="w-28 shrink-0 truncate">
+                  <DeviceLabel ip={q.client_ip} />
                 </span>
                 <span className="text-xs font-mono bg-accent px-1.5 py-0.5 rounded w-12 text-center shrink-0">
                   {q.qtype}

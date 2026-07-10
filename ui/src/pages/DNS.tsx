@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
+import { DeviceLabel, useDevices } from "@/lib/devices"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -48,6 +49,7 @@ function fmtTime(ts_unix: number) {
 
 export default function DNS() {
   const navigate = useNavigate()
+  const { nameForIp } = useDevices()
   const [feed, setFeed] = useState<DnsQuery[]>([])
   const [topDomains, setTopDomains] = useState<TopDomain[]>([])
   const [clients, setClients] = useState<Client[]>([])
@@ -135,12 +137,8 @@ export default function DNS() {
                     <span className="text-muted-foreground w-20 shrink-0 tabular-nums text-xs">
                       {fmtTime(q.ts_unix)}
                     </span>
-                    <span
-                      className="text-xs font-mono text-muted-foreground w-28 shrink-0 truncate cursor-pointer hover:text-foreground"
-                      onClick={() => navigate(`/devices/${encodeURIComponent(q.client_ip)}`)}
-                      title="View device"
-                    >
-                      {q.client_ip}
+                    <span className="text-xs w-28 shrink-0 truncate">
+                      <DeviceLabel ip={q.client_ip} />
                     </span>
                     <span className="text-xs font-mono bg-accent px-1.5 py-0.5 rounded w-12 text-center shrink-0">
                       {q.qtype}
@@ -235,8 +233,8 @@ export default function DNS() {
                       onClick={() => navigate(`/devices/${encodeURIComponent(c.client_ip)}`)}
                     >
                       <td className="px-4 py-2.5">
-                        <p className="font-medium">{c.hostname ?? c.client_ip}</p>
-                        {c.hostname && (
+                        <p className="font-medium">{nameForIp(c.client_ip)}</p>
+                        {nameForIp(c.client_ip) !== c.client_ip && (
                           <p className="text-xs text-muted-foreground font-mono">{c.client_ip}</p>
                         )}
                       </td>
