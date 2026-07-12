@@ -69,6 +69,9 @@ HOMELAB_BACKGROUND_UA_LIKE = (
     "Go-http-client%",    # service-to-service polling
     "python-requests%",
     "Prometheus%",
+    "Uptime-Kuma%",       # our own uptime monitor; public-URL probes arrive via
+                          # Cloudflare IPs (like real remote users) so IP-exclusion
+                          # cannot catch them — must filter by UA
 )
 HOMELAB_SERVER_SIDE_IPS = {
     "10.0.50.83",   # qwerty — its own COOLWSD/crawler jobs originate here
