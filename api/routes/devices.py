@@ -82,15 +82,14 @@ class LabelUpdate(BaseModel):
     label: str | None = None
 
 
-@router.put("/devices/{mac}/label")
-def set_label(mac: str, body: LabelUpdate):
+@router.put("/devices/{ident}/label")
+def set_label(ident: str, body: LabelUpdate):
     with get_db_rw() as db:
-        row = db.execute("SELECT mac FROM devices WHERE mac = ?", (mac,)).fetchone()
-        if row is None:
-            from fastapi import HTTPException
+        mac = _resolve_mac(db, ident)
+        if mac is None:
             raise HTTPException(status_code=404, detail="Device not found")
         db.execute(
             "UPDATE devices SET label = ?, updated_unix = ? WHERE mac = ?",
-            (body.label or None, int(__import__("time").time()), mac),
+            (body.label or None, int(time.time()), mac),
         )
     return {"mac": mac, "label": body.label or None}

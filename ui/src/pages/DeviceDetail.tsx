@@ -73,6 +73,7 @@ export default function DeviceDetail() {
   const [flows, setFlows] = useState<Flow[]>([])
   const [editingLabel, setEditingLabel] = useState(false)
   const [labelInput, setLabelInput] = useState("")
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!decoded) return
@@ -129,16 +130,21 @@ export default function DeviceDetail() {
   const displayName = device.label || device.hostname || device.mac
 
   function saveLabel() {
+    setSaveError(null)
     fetch(`/api/devices/${encodeURIComponent(decoded)}/label`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ label: labelInput.trim() || null }),
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`save failed (${r.status})`)
+        return r.json()
+      })
       .then((data) => {
         setDevice((d) => d ? { ...d, label: data.label } : d)
         setEditingLabel(false)
       })
+      .catch((e) => setSaveError(e.message || "could not save"))
   }
 
   return (
@@ -168,6 +174,7 @@ export default function DeviceDetail() {
               />
               <button onClick={saveLabel} className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground">Save</button>
               <button onClick={() => setEditingLabel(false)} className="text-xs text-muted-foreground">Cancel</button>
+              {saveError && <span className="text-xs text-red-400">{saveError}</span>}
             </div>
           ) : (
             <div className="flex items-center gap-2 group">
