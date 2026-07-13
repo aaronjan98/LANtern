@@ -139,6 +139,20 @@ services:
         --min-interval-h 2
         --hard-cap-h 12
 
+  # Nightly retention prune -> bounds DB growth (dns_resolver_events/dns/netflow
+  # are the big tables). DELETE-only in small batches, no VACUUM on a tick so it
+  # never takes the exclusive lock that would restart the collectors.
+  prune:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.prune
+        --db /var/lib/lantern/lantern.db
+        --interval 86400
+
   # FastAPI backend — read-only access to the SQLite database.
   api:
     build:
