@@ -92,6 +92,53 @@ services:
         --db /var/lib/lantern/lantern.db
         --interval 300
 
+  # Fold uptime-kuma's monitor history into LANtern -> kuma_monitors/kuma_heartbeats.
+  # Mounts the uptime-kuma data volume read-only; copies the live WAL db before reading.
+  kuma-ingest:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - uptime-kuma_uptime-kuma-data:/kuma:ro
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.kuma_ingest
+        --kuma-dir /kuma
+        --db /var/lib/lantern/lantern.db
+        --interval 60
+
+  # WAN reachability probe -> wan_checks (outage / no-internet timeline).
+  # Pure stdlib sockets, so it rides the shared lantern image.
+  connectivity:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.wan_ingest
+        --db /var/lib/lantern/lantern.db
+        --interval 30
+
+  # Idle-gated Ookla speedtest -> speedtest_results (ISP speed history).
+  # Its own image (Dockerfile.speedtest) because it needs the Ookla CLI binary;
+  # the shared lantern image is stdlib-only. Checks the oracle every tick and
+  # only tests when the internet is idle (hard cap keeps history from starving).
+  speedtest:
+    build:
+      context: .
+      dockerfile: Dockerfile.speedtest
+    image: lantern-speedtest:latest
+    restart: unless-stopped
+    volumes:
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.speedtest_ingest
+        --db /var/lib/lantern/lantern.db
+        --tick 900
+        --min-interval-h 2
+        --hard-cap-h 12
+
   # FastAPI backend — read-only access to the SQLite database.
   api:
     build:
@@ -123,3 +170,5 @@ volumes:
       type: none
       o: bind
       device: /var/lib/lantern
+  uptime-kuma_uptime-kuma-data:
+    external: true

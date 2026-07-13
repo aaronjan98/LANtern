@@ -6,6 +6,7 @@ import DeviceDetail from "@/pages/DeviceDetail"
 import DNS from "@/pages/DNS"
 import Flows from "@/pages/Flows"
 import Security from "@/pages/Security"
+import Internet from "@/pages/Internet"
 
 const navItems = [
   { to: "/", label: "Overview", exact: true },
@@ -13,6 +14,7 @@ const navItems = [
   { to: "/dns", label: "DNS" },
   { to: "/flows", label: "Flows" },
   { to: "/security", label: "Security" },
+  { to: "/internet", label: "Internet" },
 ]
 
 function Sidebar() {
@@ -59,6 +61,7 @@ export default function App() {
               <Route path="/dns" element={<DNS />} />
               <Route path="/flows" element={<Flows />} />
               <Route path="/security" element={<Security />} />
+              <Route path="/internet" element={<Internet />} />
             </Routes>
           </main>
         </div>

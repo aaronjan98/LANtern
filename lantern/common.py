@@ -230,6 +230,69 @@ CREATE TABLE IF NOT EXISTS fail2ban_events (
 );
 CREATE INDEX IF NOT EXISTS idx_fail2ban_events_time ON fail2ban_events(ts_unix);
 CREATE INDEX IF NOT EXISTS idx_fail2ban_events_ip_time ON fail2ban_events(ip, ts_unix);
+
+-- Internet health: one row per scheduled Ookla speedtest (lantern.speedtest_ingest).
+-- ok=0 rows record a failed run (e.g. the WAN was down) so gaps are explicit.
+CREATE TABLE IF NOT EXISTS speedtest_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix INTEGER NOT NULL,
+    ok INTEGER NOT NULL,             -- 1 = completed, 0 = failed
+    download_bps REAL,               -- bits/second
+    upload_bps REAL,                 -- bits/second
+    ping_ms REAL,
+    jitter_ms REAL,
+    packet_loss REAL,                -- percent
+    server_name TEXT,
+    server_id INTEGER,
+    isp TEXT,
+    result_url TEXT,
+    error TEXT,
+    ingested_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_speedtest_results_time ON speedtest_results(ts_unix);
+
+-- WAN reachability probe every ~30s (lantern.wan_ingest). up=0 with
+-- gateway_up=1 is the 'connected but no internet' case; outage windows are
+-- derived from these rows at query time.
+CREATE TABLE IF NOT EXISTS wan_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix INTEGER NOT NULL,
+    up INTEGER NOT NULL,             -- 1 = internet reachable, 0 = down
+    gateway_up INTEGER,              -- 1/0/NULL LAN gateway reachable
+    rtt_ms REAL,                     -- best RTT of successful probes
+    targets_ok INTEGER,
+    targets_total INTEGER,
+    detail TEXT,                     -- json per-target results
+    ingested_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wan_checks_time ON wan_checks(ts_unix);
+
+-- Folded-in uptime-kuma history (lantern.kuma_ingest). Lets service/WAN
+-- outages correlate with DNS/flows/device activity. kuma monitor+heartbeat
+-- ids are preserved so re-ingest is idempotent.
+CREATE TABLE IF NOT EXISTS kuma_monitors (
+    id INTEGER PRIMARY KEY,          -- kuma monitor id
+    name TEXT,
+    type TEXT,
+    url TEXT,
+    hostname TEXT,
+    port INTEGER,
+    active INTEGER,
+    updated_unix INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS kuma_heartbeats (
+    kuma_id INTEGER PRIMARY KEY,     -- kuma heartbeat id (dedupe)
+    monitor_id INTEGER NOT NULL,
+    status INTEGER NOT NULL,         -- 0 down, 1 up, 2 pending, 3 maintenance
+    ts_unix INTEGER,
+    ping_ms REAL,
+    important INTEGER,               -- 1 = state-change heartbeat
+    msg TEXT,
+    ingested_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kuma_hb_monitor_time ON kuma_heartbeats(monitor_id, ts_unix);
+CREATE INDEX IF NOT EXISTS idx_kuma_hb_time ON kuma_heartbeats(ts_unix);
+CREATE INDEX IF NOT EXISTS idx_kuma_hb_important ON kuma_heartbeats(important, ts_unix);
 """
 
 

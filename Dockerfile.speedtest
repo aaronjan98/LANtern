@@ -1,0 +1,21 @@
+# Speedtest collector — the base lantern image is stdlib-only, but this one needs
+# the official Ookla CLI binary, so it gets its own image.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ARG SPEEDTEST_VERSION=1.2.0
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 \
+ && curl -fsSL "https://install.speedtest.net/app/cli/ookla-speedtest-${SPEEDTEST_VERSION}-linux-x86_64.tgz" -o /tmp/st.tgz \
+ && tar -xzf /tmp/st.tgz -C /usr/local/bin speedtest \
+ && rm /tmp/st.tgz \
+ && apt-get purge -y --auto-remove curl \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY lantern/ /app/lantern/
+
+ENV PYTHONPATH=/app
+ENV LANTERN_DB=/var/lib/lantern/lantern.db
+
+CMD ["python3", "-m", "lantern.speedtest_ingest", "--db", "/var/lib/lantern/lantern.db"]
