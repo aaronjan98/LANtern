@@ -3,6 +3,7 @@ import { DevicesProvider } from "@/lib/devices"
 import Overview from "@/pages/Overview"
 import Devices from "@/pages/Devices"
 import DeviceDetail from "@/pages/DeviceDetail"
+import People from "@/pages/People"
 import DNS from "@/pages/DNS"
 import Flows from "@/pages/Flows"
 import Security from "@/pages/Security"
@@ -11,6 +12,7 @@ import Internet from "@/pages/Internet"
 const navItems = [
   { to: "/", label: "Overview", exact: true },
   { to: "/devices", label: "Devices" },
+  { to: "/people", label: "People" },
   { to: "/dns", label: "DNS" },
   { to: "/flows", label: "Flows" },
   { to: "/security", label: "Security" },
@@ -58,6 +60,7 @@ export default function App() {
               <Route path="/" element={<Overview />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/devices/:mac" element={<DeviceDetail />} />
+              <Route path="/people" element={<People />} />
               <Route path="/dns" element={<DNS />} />
               <Route path="/flows" element={<Flows />} />
               <Route path="/security" element={<Security />} />

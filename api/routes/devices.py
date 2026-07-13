@@ -1,5 +1,8 @@
 import time
+
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
 from api.db import get_db, get_db_rw
 
 router = APIRouter()
@@ -20,7 +23,12 @@ def _device_row(row) -> dict:
 def list_devices():
     with get_db() as db:
         rows = db.execute(
-            "SELECT * FROM devices ORDER BY last_seen_unix DESC"
+            """
+            SELECT d.*, p.name AS person_name
+            FROM devices d
+            LEFT JOIN people p ON p.id = d.person_id
+            ORDER BY d.last_seen_unix DESC
+            """
         ).fetchall()
     return [_device_row(r) for r in rows]
 
@@ -55,7 +63,15 @@ def get_device(ident: str):
         mac = _resolve_mac(db, ident)
         if mac is None:
             raise HTTPException(status_code=404, detail="Device not found")
-        row = db.execute("SELECT * FROM devices WHERE mac = ?", (mac,)).fetchone()
+        row = db.execute(
+            """
+            SELECT d.*, p.name AS person_name
+            FROM devices d
+            LEFT JOIN people p ON p.id = d.person_id
+            WHERE d.mac = ?
+            """,
+            (mac,),
+        ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Device not found")
 
@@ -75,8 +91,6 @@ def get_device(ident: str):
         "ip_history": [dict(r) for r in ip_history],
     }
 
-from pydantic import BaseModel
-
 
 class LabelUpdate(BaseModel):
     label: str | None = None
@@ -93,3 +107,29 @@ def set_label(ident: str, body: LabelUpdate):
             (body.label or None, int(time.time()), mac),
         )
     return {"mac": mac, "label": body.label or None}
+
+
+class PersonAssign(BaseModel):
+    person_id: int | None = None
+
+
+@router.put("/devices/{ident}/person")
+def set_person(ident: str, body: PersonAssign):
+    """Assign a device to a person (or unassign with person_id: null)."""
+    with get_db_rw() as db:
+        mac = _resolve_mac(db, ident)
+        if mac is None:
+            raise HTTPException(status_code=404, detail="Device not found")
+        name = None
+        if body.person_id is not None:
+            row = db.execute(
+                "SELECT name FROM people WHERE id = ?", (body.person_id,)
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Person not found")
+            name = row["name"]
+        db.execute(
+            "UPDATE devices SET person_id = ?, updated_unix = ? WHERE mac = ?",
+            (body.person_id, int(time.time()), mac),
+        )
+    return {"mac": mac, "person_id": body.person_id, "person_name": name}

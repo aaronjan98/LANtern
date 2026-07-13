@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import stats, devices, dns, flows, activity, security, internet
+from api.routes import stats, devices, dns, flows, activity, security, internet, people
 
 app = FastAPI(title="LANtern API", version="0.1.0")
 
@@ -19,6 +19,7 @@ app.include_router(flows.router, prefix="/api")
 app.include_router(activity.router, prefix="/api")
 app.include_router(security.router, prefix="/api")
 app.include_router(internet.router, prefix="/api")
+app.include_router(people.router, prefix="/api")
 
 
 @app.get("/api/health")

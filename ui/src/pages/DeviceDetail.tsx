@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts"
@@ -14,6 +15,8 @@ interface Device {
   first_seen_unix: number | null
   last_seen_unix: number | null
   label: string | null
+  person_id: number | null
+  person_name: string | null
   active: boolean
 }
 
@@ -74,6 +77,11 @@ export default function DeviceDetail() {
   const [editingLabel, setEditingLabel] = useState(false)
   const [labelInput, setLabelInput] = useState("")
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [people, setPeople] = useState<{ id: number; name: string }[]>([])
+
+  useEffect(() => {
+    fetch("/api/people").then((r) => r.json()).then(setPeople).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!decoded) return
@@ -147,6 +155,18 @@ export default function DeviceDetail() {
       .catch((e) => setSaveError(e.message || "could not save"))
   }
 
+  function assignPerson(personId: number | null) {
+    fetch(`/api/devices/${encodeURIComponent(decoded)}/person`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ person_id: personId }),
+    })
+      .then((r) => r.json())
+      .then((data) =>
+        setDevice((d) => d ? { ...d, person_id: data.person_id, person_name: data.person_name } : d)
+      )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -195,7 +215,7 @@ export default function DeviceDetail() {
       </div>
 
       {/* Meta cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Card><CardHeader className="pb-1"><CardTitle className="text-xs text-muted-foreground">MAC</CardTitle></CardHeader>
           <CardContent><p className="font-mono text-sm">{device.mac}</p></CardContent></Card>
         <Card><CardHeader className="pb-1"><CardTitle className="text-xs text-muted-foreground">IP</CardTitle></CardHeader>
@@ -204,6 +224,17 @@ export default function DeviceDetail() {
           <CardContent><p className="text-sm">{device.vendor ?? "—"}</p></CardContent></Card>
         <Card><CardHeader className="pb-1"><CardTitle className="text-xs text-muted-foreground">First seen</CardTitle></CardHeader>
           <CardContent><p className="text-sm">{fmt(device.first_seen_unix)}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-xs text-muted-foreground">Person</CardTitle></CardHeader>
+          <CardContent>
+            <Select value={device.person_id != null ? String(device.person_id) : "none"}
+              onValueChange={(v) => v && assignPerson(v === "none" ? null : Number(v))}>
+              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Unassigned</SelectItem>
+                {people.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </CardContent></Card>
       </div>
 
       {/* DNS activity chart */}

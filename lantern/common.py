@@ -293,6 +293,17 @@ CREATE TABLE IF NOT EXISTS kuma_heartbeats (
 CREATE INDEX IF NOT EXISTS idx_kuma_hb_monitor_time ON kuma_heartbeats(monitor_id, ts_unix);
 CREATE INDEX IF NOT EXISTS idx_kuma_hb_time ON kuma_heartbeats(ts_unix);
 CREATE INDEX IF NOT EXISTS idx_kuma_hb_important ON kuma_heartbeats(important, ts_unix);
+
+-- Device->person identity: a person owns many devices (devices.person_id).
+-- Shared/infrastructure devices stay unassigned (NULL). Lets LANtern and the
+-- voice assistant answer 'who (a person) is online' rather than just 'what'.
+CREATE TABLE IF NOT EXISTS people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    note TEXT,
+    created_unix INTEGER NOT NULL,
+    updated_unix INTEGER NOT NULL
+);
 """
 
 
@@ -300,6 +311,11 @@ def _migrate(conn):
     existing = {row[1] for row in conn.execute("PRAGMA table_info(devices)")}
     if "label" not in existing:
         conn.execute("ALTER TABLE devices ADD COLUMN label TEXT")
+    if "person_id" not in existing:
+        conn.execute("ALTER TABLE devices ADD COLUMN person_id INTEGER")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_devices_person ON devices(person_id)"
+    )
 
 
 def connect_db(path: str = DEFAULT_DB) -> sqlite3.Connection:
