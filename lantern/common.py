@@ -304,6 +304,41 @@ CREATE TABLE IF NOT EXISTS people (
     created_unix INTEGER NOT NULL,
     updated_unix INTEGER NOT NULL
 );
+
+-- Deco WiFi reboot automation: state machine + audit log (lantern.deco_reboot
+-- brain, the host runner, and the /api/reboot endpoints). The recurring Deco
+-- X60 5 GHz uptime-degradation fault is only cleared by a power-cycle, so this
+-- both schedules the mitigation and records every run. Lifecycle:
+--   pending -> approved -> ready -> executing -> succeeded | failed
+--   (or canceled / superseded).
+-- An 'approved' backstop/manual reboot waits until the activity oracle reports
+-- safe_for_deco_reboot (internet_idle && homelab_idle); the brain then flips it
+-- to 'ready'. The host runner (it owns the Kasa plug; the containers can't) is
+-- the only actor that executes -- it records the result plus an external
+-- reachability check just before and after, so we can prove the Cloudflare
+-- tunnel / hosted services never blipped when only the WiFi AP was cycled.
+CREATE TABLE IF NOT EXISTS deco_reboot_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_unix INTEGER NOT NULL,
+    trigger TEXT NOT NULL,            -- scheduled_backstop | manual | degradation
+    status TEXT NOT NULL,            -- pending|approved|ready|executing|succeeded|failed|canceled|superseded
+    requested_by TEXT,               -- who created it (X-Forwarded-User) or 'scheduler'
+    approved_by TEXT,                -- who approved, or 'scheduler' for the backstop
+    approved_unix INTEGER,
+    ready_unix INTEGER,              -- when the idle gate opened
+    executed_unix INTEGER,           -- when the host runner began the power-cycle
+    finished_unix INTEGER,
+    result TEXT,                     -- succeeded | failed
+    idle_evidence_json TEXT,         -- oracle evidence captured at ready time
+    tunnel_before TEXT,              -- external-reachability check just before
+    tunnel_after TEXT,               -- ... and just after
+    detail TEXT,                     -- runner notes / error / log tail
+    updated_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_deco_reboot_events_status
+    ON deco_reboot_events(status, created_unix);
+CREATE INDEX IF NOT EXISTS idx_deco_reboot_events_created
+    ON deco_reboot_events(created_unix);
 """
 
 

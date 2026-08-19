@@ -8,6 +8,7 @@ import DNS from "@/pages/DNS"
 import Flows from "@/pages/Flows"
 import Security from "@/pages/Security"
 import Internet from "@/pages/Internet"
+import Maintenance from "@/pages/Maintenance"
 
 const navItems = [
   { to: "/", label: "Overview", exact: true },
@@ -17,6 +18,7 @@ const navItems = [
   { to: "/flows", label: "Flows" },
   { to: "/security", label: "Security" },
   { to: "/internet", label: "Internet" },
+  { to: "/maintenance", label: "Maintenance" },
 ]
 
 function Sidebar() {
@@ -65,6 +67,7 @@ export default function App() {
               <Route path="/flows" element={<Flows />} />
               <Route path="/security" element={<Security />} />
               <Route path="/internet" element={<Internet />} />
+              <Route path="/maintenance" element={<Maintenance />} />
             </Routes>
           </main>
         </div>

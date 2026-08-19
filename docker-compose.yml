@@ -139,6 +139,26 @@ services:
         --min-interval-h 2
         --hard-cap-h 12
 
+  # Idle-gated Deco WiFi reboot -- the scheduler/brain. Decides when the main
+  # Deco (10.0.50.216) is due for its mitigation power-cycle and, per the
+  # activity oracle (safe_for_deco_reboot), flips an approved request to 'ready'.
+  # It never executes: the Kasa plug lives on the host, so deco-reboot-runner.sh
+  # (a systemd timer) claims ready rows and runs ~/deco-reboot/deco-reboot.sh.
+  deco-reboot:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.deco_reboot
+        --db /var/lib/lantern/lantern.db
+        --tick 600
+        --interval-days 3
+        --api-url http://lantern.home/api/activity/idle
+    depends_on:
+      - api
+
   # Nightly retention prune -> bounds DB growth (dns_resolver_events/dns/netflow
   # are the big tables). DELETE-only in small batches, no VACUUM on a tick so it
   # never takes the exclusive lock that would restart the collectors.

@@ -1,0 +1,16 @@
+[Unit]
+Description=LANtern Deco reboot runner (executes idle-gated, brain-approved reboots)
+Documentation=https://github.com/aaronjan98/LANtern
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+User=aj
+Group=aj
+WorkingDirectory=/home/aj/deco-reboot
+ExecStart=/home/aj/deco-reboot/deco-reboot-runner.sh
+# First deploy: uncomment to validate the full path WITHOUT power-cycling the AP.
+# Environment=DRY_RUN=1
+# Override the external-reachability probe target if you prefer another service:
+# Environment=TUNNEL_URL=https://immich.aaronjanovitch.com

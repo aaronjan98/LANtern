@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the LANtern Deco reboot runner every 10 minutes
+Documentation=https://github.com/aaronjan98/LANtern
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
