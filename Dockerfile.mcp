@@ -1,0 +1,18 @@
+# MCP tool surface — needs the MCP SDK (pip), so it gets its own image on top of
+# the stdlib-only collector base. Tools proxy LANtern's internal HTTP API.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir "mcp>=1.9,<2"
+
+COPY lantern/ /app/lantern/
+
+ENV PYTHONPATH=/app
+ENV LANTERN_API=http://api:8000/api
+ENV MCP_HOST=0.0.0.0
+ENV MCP_PORT=8765
+
+EXPOSE 8765
+
+CMD ["python3", "-m", "lantern.mcp_server"]
