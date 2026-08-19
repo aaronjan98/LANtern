@@ -38,7 +38,6 @@ interface IdleState {
   safe_for_deco_reboot: boolean
 }
 
-const OPEN = new Set(["pending", "approved", "ready", "executing"])
 
 function fmtTime(unix: number) {
   return new Date(unix * 1000).toLocaleString([], {
