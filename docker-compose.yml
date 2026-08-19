@@ -173,6 +173,22 @@ services:
         --db /var/lib/lantern/lantern.db
         --interval 86400
 
+  # Model-agnostic MCP tool surface over LANtern's data. Any MCP client (the
+  # Framework's Claude, a local Ollama agent, ...) calls these read-only tools;
+  # they proxy the internal API. Its own image because it needs the MCP SDK.
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    image: lantern-mcp:latest
+    restart: unless-stopped
+    environment:
+      - LANTERN_API=http://api:8000/api
+    ports:
+      - "8765:8765"
+    depends_on:
+      - api
+
   # FastAPI backend — read-only access to the SQLite database.
   api:
     build:
