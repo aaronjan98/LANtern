@@ -7,3 +7,6 @@ __pycache__/
 .env
 ui/node_modules/
 ui/dist/
+
+# local session notes (not for the public mirror)
+memory/
