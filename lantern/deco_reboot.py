@@ -99,18 +99,21 @@ def _create_backstop(conn, interval_days: float) -> None:
     if age_days < interval_days:
         return
     now = _now()
+    # Created as 'pending' -> it needs your explicit approval in the UI before it
+    # can ever advance to ready/execute. The backstop only *recommends* a reboot
+    # when the Deco is overdue; it never power-cycles on its own. (Flip the status
+    # here to 'approved' if you'd rather it run hands-off, idle-gated, no prompt.)
     conn.execute(
         """
         INSERT INTO deco_reboot_events
-            (created_unix, trigger, status, requested_by, approved_by,
-             approved_unix, updated_unix)
-        VALUES (?, 'scheduled_backstop', 'approved', 'scheduler', 'scheduler', ?, ?)
+            (created_unix, trigger, status, requested_by, updated_unix)
+        VALUES (?, 'scheduled_backstop', 'pending', 'scheduler', ?)
         """,
-        (now, now, now),
+        (now, now),
     )
     conn.commit()
-    print(f"[{now}] opened backstop request (last reboot {age_days:.1f}d ago "
-          f"≥ {interval_days}d)", flush=True)
+    print(f"[{now}] backstop reboot RECOMMENDED — pending your approval "
+          f"(last reboot {age_days:.1f}d ago ≥ {interval_days}d)", flush=True)
 
 
 def _promote_if_idle(conn, api_url: str, timeout: float) -> None:
