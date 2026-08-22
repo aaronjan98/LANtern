@@ -85,6 +85,7 @@ export default function Maintenance() {
   const [events, setEvents] = useState<RebootEvent[]>([])
   const [status, setStatus] = useState<RebootStatus | null>(null)
   const [idle, setIdle] = useState<IdleState | null>(null)
+  const [authUser, setAuthUser] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(() => {
@@ -93,7 +94,16 @@ export default function Maintenance() {
       fetch("/api/reboot/status").then((r) => r.json()),
       fetch("/api/activity/idle").then((r) => r.json()),
     ]).then(([e, s, i]) => { setEvents(e); setStatus(s); setIdle(i) }).catch(() => {})
+    // oauth2-proxy tells us who's signed in (401 when nobody is).
+    fetch("/oauth2/userinfo")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u) => setAuthUser(u ? (u.preferredUsername || u.user || u.email || "signed in") : null))
+      .catch(() => setAuthUser(null))
   }, [])
+
+  function signIn() {
+    window.location.href = `/oauth2/sign_in?rd=${encodeURIComponent(location.pathname)}`
+  }
 
   useEffect(() => {
     load()
@@ -106,6 +116,11 @@ export default function Maintenance() {
     setBusy(true)
     try {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" } })
+      if (r.status === 401 || r.status === 403) {
+        // Not signed in (or not you) — send to GitHub login, then come back.
+        signIn()
+        return
+      }
       if (!r.ok) {
         const body = await r.json().catch(() => ({}))
         alert(body.detail || `Request failed (${r.status})`)
@@ -128,15 +143,26 @@ export default function Maintenance() {
             Deco WiFi reboot — idle-gated backstop every 3 days, clears the recurring 5 GHz degradation.
           </p>
         </div>
-        <button
-          onClick={() => post("/api/reboot/request",
-            "Queue a Deco reboot? It won't fire until WiFi is idle; you can cancel it before then.")}
-          disabled={busy || !!open}
-          title={open ? "A reboot request is already in flight" : "Queue an idle-gated reboot now"}
-          className="text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground disabled:opacity-40"
-        >
-          Reboot now
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          <div className="text-xs text-muted-foreground">
+            {authUser ? (
+              <>signed in as <span className="text-foreground">{authUser}</span> ·{" "}
+                <a href={`/oauth2/sign_out?rd=${encodeURIComponent(location.pathname)}`} className="underline hover:text-foreground">sign out</a>
+              </>
+            ) : (
+              <>🔒 <button onClick={signIn} className="underline hover:text-foreground">sign in to make changes</button></>
+            )}
+          </div>
+          <button
+            onClick={() => post("/api/reboot/request",
+              "Queue a Deco reboot? It won't fire until WiFi is idle; you can cancel it before then.")}
+            disabled={busy || !!open}
+            title={open ? "A reboot request is already in flight" : "Queue an idle-gated reboot now"}
+            className="text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground disabled:opacity-40"
+          >
+            Reboot now
+          </button>
+        </div>
       </div>
 
       {/* Headline status */}
