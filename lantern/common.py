@@ -325,6 +325,7 @@ CREATE TABLE IF NOT EXISTS deco_reboot_events (
     requested_by TEXT,               -- who created it (X-Forwarded-User) or 'scheduler'
     approved_by TEXT,                -- who approved, or 'scheduler' for the backstop
     approved_unix INTEGER,
+    scheduled_unix INTEGER,          -- suggested/confirmed run time (overnight slot)
     ready_unix INTEGER,              -- when the idle gate opened
     executed_unix INTEGER,           -- when the host runner began the power-cycle
     finished_unix INTEGER,
@@ -351,6 +352,9 @@ def _migrate(conn):
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_devices_person ON devices(person_id)"
     )
+    reboot_cols = {row[1] for row in conn.execute("PRAGMA table_info(deco_reboot_events)")}
+    if reboot_cols and "scheduled_unix" not in reboot_cols:
+        conn.execute("ALTER TABLE deco_reboot_events ADD COLUMN scheduled_unix INTEGER")
 
 
 def connect_db(path: str = DEFAULT_DB) -> sqlite3.Connection:

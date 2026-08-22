@@ -30,6 +30,7 @@ import json
 import sys
 import time
 import urllib.request
+from datetime import datetime, timedelta, timezone
 
 from lantern.common import DEFAULT_DB, connect_db, get_metadata, set_metadata
 
@@ -49,6 +50,17 @@ def _connect(db_path: str):
 
 def _now() -> int:
     return int(time.time())
+
+
+def _next_overnight_unix(hour_utc: int) -> int:
+    """Next occurrence of hour_utc:00 UTC. Default 11:00 UTC ≈ 3-4 AM Pacific
+    year-round (DST-safe by anchoring in UTC); the browser renders it in the
+    viewer's local time. This is the *suggested* overnight reboot slot."""
+    now = datetime.now(timezone.utc)
+    target = now.replace(hour=hour_utc % 24, minute=0, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return int(target.timestamp())
 
 
 def _open_request(conn):
@@ -91,28 +103,31 @@ def oracle_safe(api_url: str, timeout: float):
         return None, {}
 
 
-def _create_backstop(conn, interval_days: float) -> None:
-    """Open an auto-approved backstop request if one is due and none is in flight."""
+def _create_backstop(conn, interval_days: float, hour_utc: int) -> None:
+    """Recommend a backstop reboot when the Deco is overdue and none is in flight.
+
+    Created 'pending' with a *suggested overnight slot* (scheduled_unix) pre-filled.
+    You confirm it in the UI (that's the approval); it then runs at that overnight
+    time, and only if WiFi is idle. It never power-cycles on its own.
+    """
     if _open_request(conn) is not None:
         return
     age_days = (_now() - _last_success_unix(conn)) / 86400
     if age_days < interval_days:
         return
     now = _now()
-    # Created as 'pending' -> it needs your explicit approval in the UI before it
-    # can ever advance to ready/execute. The backstop only *recommends* a reboot
-    # when the Deco is overdue; it never power-cycles on its own. (Flip the status
-    # here to 'approved' if you'd rather it run hands-off, idle-gated, no prompt.)
+    scheduled = _next_overnight_unix(hour_utc)
     conn.execute(
         """
         INSERT INTO deco_reboot_events
-            (created_unix, trigger, status, requested_by, updated_unix)
-        VALUES (?, 'scheduled_backstop', 'pending', 'scheduler', ?)
+            (created_unix, trigger, status, requested_by, scheduled_unix, updated_unix)
+        VALUES (?, 'scheduled_backstop', 'pending', 'scheduler', ?, ?)
         """,
-        (now, now),
+        (now, scheduled, now),
     )
     conn.commit()
-    print(f"[{now}] backstop reboot RECOMMENDED — pending your approval "
+    print(f"[{now}] backstop reboot RECOMMENDED — pending approval, suggested "
+          f"{datetime.fromtimestamp(scheduled, timezone.utc):%Y-%m-%d %H:%MZ} "
           f"(last reboot {age_days:.1f}d ago ≥ {interval_days}d)", flush=True)
 
 
@@ -132,6 +147,9 @@ def _promote_if_idle(conn, api_url: str, timeout: float) -> None:
     ).fetchone()
     if row is None:
         return
+    scheduled = row["scheduled_unix"]
+    if scheduled and _now() < scheduled:
+        return  # confirmed, but its scheduled overnight slot hasn't arrived yet
     safe, evidence = oracle_safe(api_url, timeout)
     now = _now()
     if safe is True:
@@ -149,7 +167,7 @@ def _promote_if_idle(conn, api_url: str, timeout: float) -> None:
 
 
 def tick(conn, args) -> None:
-    _create_backstop(conn, args.interval_days)
+    _create_backstop(conn, args.interval_days, args.reboot_hour_utc)
     _promote_if_idle(conn, args.api_url, args.api_timeout)
 
 
@@ -231,8 +249,10 @@ def main() -> int:
     ap.add_argument("--tick", type=float, default=600,
                     help="seconds between brain ticks (default 10m)")
     ap.add_argument("--interval-days", type=float, default=3,
-                    help="backstop cadence: reboot if idle & this long since last "
+                    help="backstop cadence: recommend a reboot this long since last "
                          "(default 3d, matching the accelerated fault interval)")
+    ap.add_argument("--reboot-hour-utc", type=int, default=11,
+                    help="suggested overnight reboot hour, UTC (default 11 ≈ 3-4am PT)")
     ap.add_argument("--api-url", default="http://lantern.home/api/activity/idle",
                     help="oracle endpoint providing safe_for_deco_reboot")
     ap.add_argument("--api-timeout", type=float, default=10)

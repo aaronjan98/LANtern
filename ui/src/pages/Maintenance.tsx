@@ -17,6 +17,7 @@ interface RebootEvent {
   status: string
   requested_by: string | null
   approved_by: string | null
+  scheduled_unix: number | null
   ready_unix: number | null
   executed_unix: number | null
   finished_unix: number | null
@@ -37,7 +38,6 @@ interface IdleState {
   homelab_idle: boolean
   safe_for_deco_reboot: boolean
 }
-
 
 function fmtTime(unix: number) {
   return new Date(unix * 1000).toLocaleString([], {
@@ -152,36 +152,53 @@ export default function Maintenance() {
           sub={idle ? `internet ${idle.internet_idle ? "idle" : "busy"} · homelab ${idle.homelab_idle ? "idle" : "busy"}` : "oracle unreachable"} />
         <StatCard title="Pending"
           value={open ? open.status : "none"}
-          sub={open ? `${open.trigger} · ${open.requested_by ?? "—"}` : "no request in flight"} />
+          sub={open ? (open.scheduled_unix ? `suggested ${fmtTime(open.scheduled_unix)}` : open.trigger) : "no request in flight"} />
       </div>
 
       {/* In-flight request with controls */}
       {open && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">In-flight request #{open.id}</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {open.trigger === "scheduled_backstop" ? "Backstop reboot recommended" : `Reboot request #${open.id}`}
+            </CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center gap-4 flex-wrap">
-            <StatusBadge status={open.status} />
-            <span className="text-sm text-muted-foreground">
-              {open.trigger === "scheduled_backstop" ? "scheduled backstop" : open.trigger}
-              {open.status === "approved" && !safe && " — waiting for an idle window"}
-              {open.status === "ready" && " — idle; the runner will execute within ~10 min"}
-              {open.status === "executing" && " — power-cycling now (~2 min)"}
-            </span>
-            <div className="flex-1" />
-            {open.status === "pending" && (
-              <button onClick={() => post(`/api/reboot/${open.id}/approve`)} disabled={busy}
-                className="text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground disabled:opacity-40">
-                Approve
-              </button>
-            )}
-            {open.status !== "executing" && (
-              <button onClick={() => post(`/api/reboot/${open.id}/cancel`, "Cancel this reboot request?")} disabled={busy}
-                className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-accent disabled:opacity-40">
-                Cancel
-              </button>
-            )}
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <StatusBadge status={open.status} />
+              {open.scheduled_unix && (
+                <span className="text-sm">
+                  {open.status === "pending" ? "Suggested time: " : "Scheduled: "}
+                  <span className="font-semibold">{fmtTime(open.scheduled_unix)}</span>
+                  <span className="text-muted-foreground"> (overnight)</span>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {open.status === "pending" && open.trigger === "scheduled_backstop" &&
+                "The Deco is overdue for its mitigation reboot. Click OK to schedule it for the suggested overnight time — it’ll only power-cycle then, and only if WiFi is idle."}
+              {open.status === "pending" && open.trigger !== "scheduled_backstop" && "Awaiting approval."}
+              {open.status === "approved" && open.scheduled_unix &&
+                "Confirmed — it’ll power-cycle at the scheduled time if WiFi is idle. WiFi clients briefly roam to the other Deco units."}
+              {open.status === "approved" && !open.scheduled_unix &&
+                (safe ? "Approved and idle — will run shortly." : "Approved — waiting for an idle window.")}
+              {open.status === "ready" && "Idle window open — the runner will execute shortly."}
+              {open.status === "executing" && "Power-cycling now (~2 min); WiFi clients briefly roam to the other units."}
+            </p>
+            <div className="flex items-center gap-2">
+              {open.status === "pending" && (
+                <button onClick={() => post(`/api/reboot/${open.id}/approve`)} disabled={busy}
+                  className="text-sm px-4 py-1.5 rounded-md bg-primary text-primary-foreground disabled:opacity-40">
+                  {open.scheduled_unix ? `OK — schedule ${fmtTime(open.scheduled_unix)}` : "Approve"}
+                </button>
+              )}
+              {open.status !== "executing" && (
+                <button onClick={() => post(`/api/reboot/${open.id}/cancel`, "Cancel this reboot request?")} disabled={busy}
+                  className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-accent disabled:opacity-40">
+                  {open.status === "pending" ? "Dismiss" : "Cancel"}
+                </button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
