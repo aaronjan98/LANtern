@@ -13,7 +13,7 @@
 set -uo pipefail
 
 BRAIN_CTR="${BRAIN_CTR:-lantern-deco-reboot-1}"
-ACTUATOR="${ACTUATOR:-/home/aj/deco-reboot/deco-reboot.sh}"
+ACTUATOR="${ACTUATOR:-/home/aj/deco-reboot/deco-reboot-soft.sh}"
 TUNNEL_URL="${TUNNEL_URL:-https://immich.aaronjanovitch.com}"  # external path proof
 DRY_RUN="${DRY_RUN:-0}"
 LOG="${LOG:-/home/aj/deco-reboot/deco-reboot-runner.log}"
