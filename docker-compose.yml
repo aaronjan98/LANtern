@@ -214,6 +214,7 @@ services:
     restart: unless-stopped
     volumes:
       - lantern_data:/var/lib/lantern
+      - /etc/dnsmasq.d:/data/dnsmasq.d:ro   # resolver blocklist (address=/x/0.0.0.0)
     environment:
       - LANTERN_DB=/var/lib/lantern/lantern.db
 

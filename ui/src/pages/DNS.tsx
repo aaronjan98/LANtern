@@ -28,6 +28,14 @@ interface Client {
   queries: number
 }
 
+interface Blocked {
+  domain: string
+  hits: number
+  clients: number
+  last_unix: number | null
+  top_device: string | null
+}
+
 const TIME_OPTIONS = [
   { label: "Last hour", value: "60" },
   { label: "Last 6h", value: "360" },
@@ -53,6 +61,7 @@ export default function DNS() {
   const [feed, setFeed] = useState<DnsQuery[]>([])
   const [topDomains, setTopDomains] = useState<TopDomain[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [blocked, setBlocked] = useState<Blocked[]>([])
   const [minutes, setMinutes] = useState("60")
   const [qtype, setQtype] = useState("all")
   const [clientFilter, setClientFilter] = useState("")
@@ -71,11 +80,16 @@ export default function DNS() {
     fetch(`/api/dns/clients?minutes=${minutes}`).then((r) => r.json()).then(setClients)
   }, [minutes])
 
+  const loadBlocked = useCallback(() => {
+    const hours = Math.max(1, Math.round(Number(minutes) / 60))
+    fetch(`/api/dns/blocked?hours=${hours}`).then((r) => r.json()).then((d) => setBlocked(d.blocked || []))
+  }, [minutes])
+
   useEffect(() => {
-    loadFeed(); loadTop(); loadClients()
-    const id = setInterval(() => { loadFeed(); loadTop(); loadClients() }, 10000)
+    loadFeed(); loadTop(); loadClients(); loadBlocked()
+    const id = setInterval(() => { loadFeed(); loadTop(); loadClients(); loadBlocked() }, 10000)
     return () => clearInterval(id)
-  }, [loadFeed, loadTop, loadClients])
+  }, [loadFeed, loadTop, loadClients, loadBlocked])
 
   const filteredFeed = qtype === "all"
     ? feed
@@ -104,6 +118,7 @@ export default function DNS() {
           <TabsTrigger value="feed">Feed</TabsTrigger>
           <TabsTrigger value="top">Top Domains</TabsTrigger>
           <TabsTrigger value="clients">Clients</TabsTrigger>
+          <TabsTrigger value="blocked">Blocked</TabsTrigger>
         </TabsList>
 
         {/* ── Feed tab ── */}
@@ -245,6 +260,53 @@ export default function DNS() {
               </table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── Blocked tab ── */}
+        <TabsContent value="blocked" className="space-y-3 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">
+                Blocked at the resolver{" "}
+                <span className="text-muted-foreground font-normal">
+                  — {blocked.length} domain{blocked.length === 1 ? "" : "s"} (dnsmasq blackhole)
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 text-muted-foreground font-medium">Domain</th>
+                    <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">Attempts</th>
+                    <th className="text-left px-4 py-2.5 text-muted-foreground font-medium">Top device</th>
+                    <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">Last</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {blocked.length === 0 && (
+                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">No blocked domains configured.</td></tr>
+                  )}
+                  {blocked.map((b) => (
+                    <tr key={b.domain} className="hover:bg-accent/30">
+                      <td className="px-4 py-2 font-mono text-xs">{b.domain}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {b.hits.toLocaleString()}
+                        {b.clients > 1 && <span className="text-muted-foreground text-xs"> · {b.clients} dev</span>}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground">{b.top_device || "—"}</td>
+                      <td className="px-4 py-2 text-right text-xs text-muted-foreground tabular-nums">
+                        {b.last_unix ? fmtTime(b.last_unix) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+          <p className="text-xs text-muted-foreground">
+            dnsmasq blackhole entries (return 0.0.0.0). "Attempts" = queries devices still make to them in the window — proof the block is doing its job.
+          </p>
         </TabsContent>
       </Tabs>
     </div>
