@@ -61,7 +61,24 @@ def prune_table(conn, table, tcol, days, batch, dry) -> int:
     return total
 
 
-def run_once(conn, batch, dry, do_vacuum) -> None:
+def prune_devices(conn, days, dry) -> int:
+    """Drop stale device records -- the randomized-MAC ghosts that clutter the
+    inventory (a phone cycles through many random MACs; each is a dead record once
+    it stops appearing). Only rows that are unlabeled, unassigned to a person, and
+    not static reservations, unseen for `days`, are removed. last_seen is
+    lease-based, so a currently-present device (live lease) is never stale and is
+    never pruned -- only long-gone records go."""
+    cutoff = int(time.time()) - days * 86400
+    where = ("last_seen_unix < ? AND person_id IS NULL AND label IS NULL "
+             "AND (source IS NULL OR source != 'dnsmasq-static')")
+    if dry:
+        return conn.execute(f"SELECT COUNT(*) FROM devices WHERE {where}", (cutoff,)).fetchone()[0]
+    cur = conn.execute(f"DELETE FROM devices WHERE {where}", (cutoff,))
+    conn.commit()
+    return cur.rowcount
+
+
+def run_once(conn, batch, dry, do_vacuum, device_days) -> None:
     verb = "would delete" if dry else "deleted"
     grand = 0
     for table, (tcol, days) in RETENTION.items():
@@ -73,6 +90,14 @@ def run_once(conn, batch, dry, do_vacuum) -> None:
         grand += n
         if n:
             print(f"[{int(time.time())}] {table}: {verb} {n} rows (keep {days}d)", flush=True)
+    try:
+        n = prune_devices(conn, device_days, dry)
+        grand += n
+        if n:
+            print(f"[{int(time.time())}] devices: {verb} {n} stale records "
+                  f"(unlabeled/unassigned, unseen {device_days}d)", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[{int(time.time())}] devices: ERROR {e}", flush=True)
     print(f"[{int(time.time())}] total {verb}: {grand} rows", flush=True)
     if dry:
         return
@@ -91,12 +116,14 @@ def main() -> int:
     ap.add_argument("--batch", type=int, default=20000, help="rows per delete batch")
     ap.add_argument("--dry-run", action="store_true", help="report what would be deleted, change nothing")
     ap.add_argument("--vacuum", action="store_true", help="VACUUM after pruning (reclaims disk; locks the DB)")
+    ap.add_argument("--device-retention-days", type=int, default=14,
+                    help="drop unlabeled/unassigned device records unseen this long (default 14)")
     ap.add_argument("--once", action="store_true", help="run one pass and exit")
     args = ap.parse_args()
 
     conn = connect_db(args.db)
     while True:
-        run_once(conn, args.batch, args.dry_run, args.vacuum)
+        run_once(conn, args.batch, args.dry_run, args.vacuum, args.device_retention_days)
         if args.once or args.dry_run:
             return 0
         time.sleep(args.interval)
