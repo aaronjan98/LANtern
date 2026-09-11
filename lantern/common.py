@@ -365,6 +365,8 @@ def _migrate(conn):
         conn.execute("ALTER TABLE devices ADD COLUMN label TEXT")
     if "person_id" not in existing:
         conn.execute("ALTER TABLE devices ADD COLUMN person_id INTEGER")
+    if "reviewed_unix" not in existing:  # acknowledged in the New-devices inbox (guest/known) -> never pruned
+        conn.execute("ALTER TABLE devices ADD COLUMN reviewed_unix INTEGER")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_devices_person ON devices(person_id)"
     )

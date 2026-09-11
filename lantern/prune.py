@@ -62,20 +62,44 @@ def prune_table(conn, table, tcol, days, batch, dry) -> int:
 
 
 def prune_devices(conn, days, dry) -> int:
-    """Drop stale device records -- the randomized-MAC ghosts that clutter the
-    inventory (a phone cycles through many random MACs; each is a dead record once
-    it stops appearing). Only rows that are unlabeled, unassigned to a person, and
-    not static reservations, unseen for `days`, are removed. last_seen is
-    lease-based, so a currently-present device (live lease) is never stale and is
-    never pruned -- only long-gone records go."""
+    """Drop stale randomized-MAC device ghosts, and ONLY those.
+
+    Prunes only **randomized (locally-administered) MACs** -- real-MAC devices are
+    stable identities (printers, cameras, servers, IoT) and are always kept. Never
+    touches anything you've claimed: assigned to a person, labeled, or reviewed (a
+    known guest); nor static reservations; nor a currently-present device (live
+    lease -> last_seen fresh). And a *named* randomized record is pruned only when
+    its name belongs to a device you've already identified -- i.e. it's a
+    superseded MAC-rotation of a known phone; a lone uniquely-named randomized
+    device (a bridge/VM/server) is kept.
+    """
     cutoff = int(time.time()) - days * 86400
-    where = ("last_seen_unix < ? AND person_id IS NULL AND label IS NULL "
-             "AND (source IS NULL OR source != 'dnsmasq-static')")
+    identified = {
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT hostname FROM devices WHERE hostname IS NOT NULL "
+            "AND (person_id IS NOT NULL OR label IS NOT NULL)"
+        )
+        if row[0]
+    }
+    candidates = conn.execute(
+        "SELECT mac, hostname FROM devices "
+        "WHERE vendor = 'Locally administered' AND last_seen_unix < ? "
+        "AND person_id IS NULL AND label IS NULL AND reviewed_unix IS NULL "
+        "AND (source IS NULL OR source != 'dnsmasq-static')",
+        (cutoff,),
+    ).fetchall()
+    to_delete = [
+        mac for mac, host in candidates
+        if not (host and host.strip() and host.strip() not in ("*", "localhost"))
+        or host.strip() in identified
+    ]
     if dry:
-        return conn.execute(f"SELECT COUNT(*) FROM devices WHERE {where}", (cutoff,)).fetchone()[0]
-    cur = conn.execute(f"DELETE FROM devices WHERE {where}", (cutoff,))
+        return len(to_delete)
+    for mac in to_delete:
+        conn.execute("DELETE FROM devices WHERE mac = ?", (mac,))
     conn.commit()
-    return cur.rowcount
+    return len(to_delete)
 
 
 def run_once(conn, batch, dry, do_vacuum, device_days) -> None:
