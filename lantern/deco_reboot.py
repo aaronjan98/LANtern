@@ -166,8 +166,32 @@ def _promote_if_idle(conn, api_url: str, timeout: float) -> None:
         print(f"[{now}] request #{row['id']} approved but {state} — waiting", flush=True)
 
 
+def _refresh_stale_suggestion(conn, hour_utc: int) -> None:
+    """Roll a still-pending backstop's suggested overnight slot forward once it has
+    passed, so the card never shows a time in the past. Only 'pending' (unapproved)
+    backstops are touched -- once you approve one, the time you confirmed stands."""
+    now = _now()
+    row = conn.execute(
+        "SELECT id, scheduled_unix FROM deco_reboot_events "
+        "WHERE status='pending' AND trigger='scheduled_backstop' "
+        "AND scheduled_unix IS NOT NULL ORDER BY created_unix LIMIT 1"
+    ).fetchone()
+    if row is None or row["scheduled_unix"] >= now:
+        return
+    new_sched = _next_overnight_unix(hour_utc)
+    conn.execute(
+        "UPDATE deco_reboot_events SET scheduled_unix=?, updated_unix=? WHERE id=?",
+        (new_sched, now, row["id"]),
+    )
+    conn.commit()
+    print(f"[{now}] backstop #{row['id']} suggested time passed unapproved — rolled "
+          f"forward to {datetime.fromtimestamp(new_sched, timezone.utc):%Y-%m-%d %H:%MZ}",
+          flush=True)
+
+
 def tick(conn, args) -> None:
     _create_backstop(conn, args.interval_days, args.reboot_hour_utc)
+    _refresh_stale_suggestion(conn, args.reboot_hour_utc)
     _promote_if_idle(conn, args.api_url, args.api_timeout)
 
 
