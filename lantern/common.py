@@ -340,6 +340,22 @@ CREATE INDEX IF NOT EXISTS idx_deco_reboot_events_status
     ON deco_reboot_events(status, created_unix);
 CREATE INDEX IF NOT EXISTS idx_deco_reboot_events_created
     ON deco_reboot_events(created_unix);
+
+-- Tailscale peer presence (lantern.tailscale_ingest -- ONE LocalAPI /status read
+-- per interval, no per-device pings). Lets the People page show remote (Tailscale)
+-- presence alongside on-LAN presence. Keyed by the stable 100.x tailnet IP;
+-- `online` is the live tailnet state.
+CREATE TABLE IF NOT EXISTS tailscale_peers (
+    ts_ip TEXT PRIMARY KEY,          -- 100.x tailnet IP (stable device id)
+    dns_name TEXT,                   -- MagicDNS short name, e.g. galaxy-zflip-aj (display)
+    hostname TEXT,                   -- device self-reported host (phones report 'localhost')
+    os TEXT,
+    online INTEGER NOT NULL,         -- 1 = tailnet-online right now
+    cur_addr TEXT,                   -- current direct endpoint ('' when relaying via DERP)
+    relay TEXT,                      -- DERP region when relayed
+    last_seen_unix INTEGER,
+    updated_unix INTEGER NOT NULL
+);
 """
 
 
@@ -355,6 +371,14 @@ def _migrate(conn):
     reboot_cols = {row[1] for row in conn.execute("PRAGMA table_info(deco_reboot_events)")}
     if reboot_cols and "scheduled_unix" not in reboot_cols:
         conn.execute("ALTER TABLE deco_reboot_events ADD COLUMN scheduled_unix INTEGER")
+    people_cols = {row[1] for row in conn.execute("PRAGMA table_info(people)")}
+    if people_cols:
+        if "tailscale_ip" not in people_cols:  # person -> their tailnet device (100.x)
+            conn.execute("ALTER TABLE people ADD COLUMN tailscale_ip TEXT")
+        if "is_guest" not in people_cols:  # guests only render when currently present
+            conn.execute("ALTER TABLE people ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0")
+        if "lan_hostname" not in people_cols:  # stable DHCP name -> survives MAC rotation
+            conn.execute("ALTER TABLE people ADD COLUMN lan_hostname TEXT")
 
 
 def connect_db(path: str = DEFAULT_DB) -> sqlite3.Connection:

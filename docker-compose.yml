@@ -139,6 +139,22 @@ services:
         --min-interval-h 2
         --hard-cap-h 12
 
+  # Tailscale peer presence -> tailscale_peers. ONE LocalAPI /status read per
+  # minute (no per-device pings); mounts tailscaled's unix socket so no CLI is
+  # needed. Feeds the People page's remote-vs-home presence.
+  tailscale-ingest:
+    build: .
+    image: lantern:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/tailscale/tailscaled.sock:/run/tailscale/tailscaled.sock
+      - lantern_data:/var/lib/lantern
+    command: >
+      python3 -m lantern.tailscale_ingest
+        --db /var/lib/lantern/lantern.db
+        --sock /run/tailscale/tailscaled.sock
+        --interval 60
+
   # Idle-gated Deco WiFi reboot -- the scheduler/brain. Decides when the main
   # Deco (10.0.50.216) is due for its mitigation power-cycle and, per the
   # activity oracle (safe_for_deco_reboot), flips an approved request to 'ready'.

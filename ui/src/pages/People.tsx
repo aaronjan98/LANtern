@@ -9,8 +9,20 @@ interface Person {
   name: string
   note: string | null
   device_count: number
-  active_devices: number
+  status: "home" | "remote" | "offline"
+  on_lan: boolean
+  on_tailscale: boolean
   online: boolean
+  is_guest: boolean
+  tailscale_name: string | null
+}
+
+// Presence = real activity, not a live DHCP lease. Home = LAN traffic now;
+// Remote = their Tailscale device is online but not on the LAN; Offline = neither.
+const PRESENCE: Record<Person["status"], { dot: string; badge: string; label: string }> = {
+  home:    { dot: "bg-green-500", badge: "bg-green-500/20 text-green-400", label: "🏠 Home" },
+  remote:  { dot: "bg-blue-500",  badge: "bg-blue-500/20 text-blue-400",  label: "🌐 Remote" },
+  offline: { dot: "bg-zinc-600",  badge: "bg-zinc-600/20 text-zinc-400",  label: "Offline" },
 }
 
 interface Device {
@@ -101,9 +113,10 @@ export default function People() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base font-semibold flex items-center gap-2">
-                      <span className={`inline-block w-2.5 h-2.5 rounded-full ${p.online ? "bg-green-500" : "bg-zinc-600"}`} />
+                      <span className={`inline-block w-2.5 h-2.5 rounded-full ${PRESENCE[p.status].dot}`} />
                       {p.name}
-                      {p.online && <Badge className="bg-green-500/20 text-green-400 border-0">online</Badge>}
+                      <Badge className={`${PRESENCE[p.status].badge} border-0`}>{PRESENCE[p.status].label}</Badge>
+                      {p.is_guest && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">guest</span>}
                     </CardTitle>
                     <button
                       onClick={() => removePerson(p)}
@@ -113,7 +126,8 @@ export default function People() {
                     </button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {p.device_count} device{p.device_count === 1 ? "" : "s"} · {p.active_devices} active
+                    {p.device_count} device{p.device_count === 1 ? "" : "s"}
+                    {p.on_tailscale && p.tailscale_name ? ` · tailscale: ${p.tailscale_name}` : ""}
                   </p>
                 </CardHeader>
                 <CardContent>
