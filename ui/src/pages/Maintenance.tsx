@@ -133,6 +133,15 @@ export default function Maintenance() {
 
   const open = status?.open_request ?? null
   const safe = idle?.safe_for_deco_reboot
+  // Only trust scheduled_unix as a future promise. An approved request's slot
+  // can pass without executing (the oracle just never went idle) -- the brain
+  // deliberately leaves that timestamp alone once approved (approval is a
+  // commitment, not a rolling suggestion), so a stale display value has to be
+  // filtered out here rather than mutated server-side. Past that point the
+  // request is really just 'waiting for the next idle window', unscheduled.
+  const now = Math.floor(Date.now() / 1000)
+  const scheduledUpcoming =
+    open?.scheduled_unix && open.scheduled_unix > now ? open.scheduled_unix : null
 
   return (
     <div className="space-y-6">
@@ -178,7 +187,7 @@ export default function Maintenance() {
           sub={idle ? `internet ${idle.internet_idle ? "idle" : "busy"} · homelab ${idle.homelab_idle ? "idle" : "busy"}` : "oracle unreachable"} />
         <StatCard title="Pending"
           value={open ? open.status : "none"}
-          sub={open ? (open.scheduled_unix ? `suggested ${fmtTime(open.scheduled_unix)}` : open.trigger) : "no request in flight"} />
+          sub={open ? (scheduledUpcoming ? `suggested ${fmtTime(scheduledUpcoming)}` : open.trigger) : "no request in flight"} />
       </div>
 
       {/* In-flight request with controls */}
@@ -192,10 +201,10 @@ export default function Maintenance() {
           <CardContent className="space-y-3">
             <div className="flex items-center gap-3 flex-wrap">
               <StatusBadge status={open.status} />
-              {open.scheduled_unix && (
+              {scheduledUpcoming && (
                 <span className="text-sm">
                   {open.status === "pending" ? "Suggested time: " : "Scheduled: "}
-                  <span className="font-semibold">{fmtTime(open.scheduled_unix)}</span>
+                  <span className="font-semibold">{fmtTime(scheduledUpcoming)}</span>
                   <span className="text-muted-foreground"> (overnight)</span>
                 </span>
               )}
@@ -204,10 +213,10 @@ export default function Maintenance() {
               {open.status === "pending" && open.trigger === "scheduled_backstop" &&
                 "The Deco is overdue for its mitigation reboot. Click OK to schedule it for the suggested overnight time — it’ll only power-cycle then, and only if WiFi is idle."}
               {open.status === "pending" && open.trigger !== "scheduled_backstop" && "Awaiting approval."}
-              {open.status === "approved" && open.scheduled_unix &&
+              {open.status === "approved" && scheduledUpcoming &&
                 "Confirmed — it’ll power-cycle at the scheduled time if WiFi is idle. WiFi clients briefly roam to the other Deco units."}
-              {open.status === "approved" && !open.scheduled_unix &&
-                (safe ? "Approved and idle — will run shortly." : "Approved — waiting for an idle window.")}
+              {open.status === "approved" && !scheduledUpcoming &&
+                (safe ? "Approved and idle — will run shortly." : "Approved — its slot passed without an idle window; waiting for the next one.")}
               {open.status === "ready" && "Idle window open — the runner will execute shortly."}
               {open.status === "executing" && "Power-cycling now (~2 min); WiFi clients briefly roam to the other units."}
             </p>
