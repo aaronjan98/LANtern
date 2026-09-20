@@ -27,6 +27,11 @@ _OPEN_PLACEHOLDERS = ",".join("?" * len(OPEN_STATUSES))
 
 class RequestBody(BaseModel):
     reason: str | None = None
+    scheduled_unix: int | None = None
+
+
+class ApproveBody(BaseModel):
+    scheduled_unix: int | None = None
 
 
 def _actor(request: Request) -> str:
@@ -86,10 +91,15 @@ def reboot_status():
 
 @router.post("/reboot/request")
 def reboot_request(request: Request, body: RequestBody | None = None):
-    """Human 'Reboot now': create an auto-approved request. It still waits for an
-    idle window before the host runner executes it."""
+    """Human 'Reboot now' (optionally 'Schedule for <time>' -- same endpoint, an
+    optional scheduled_unix): create an auto-approved request. It still waits for
+    an idle window at or after that time (immediately, if none given) before the
+    host runner executes it."""
     actor = _actor(request)
     now = int(time.time())
+    scheduled = body.scheduled_unix if body else None
+    if scheduled is not None and scheduled <= now:
+        raise HTTPException(400, "Scheduled time must be in the future")
     try:
         with get_db_rw() as db:
             if db.execute(
@@ -101,35 +111,39 @@ def reboot_request(request: Request, body: RequestBody | None = None):
             cur = db.execute(
                 "INSERT INTO deco_reboot_events "
                 "(created_unix, trigger, status, requested_by, approved_by, "
-                " approved_unix, detail, updated_unix) "
-                "VALUES (?, 'manual', 'approved', ?, ?, ?, ?, ?)",
-                (now, actor, actor, now, body.reason if body else None, now),
+                " approved_unix, scheduled_unix, detail, updated_unix) "
+                "VALUES (?, 'manual', 'approved', ?, ?, ?, ?, ?, ?)",
+                (now, actor, actor, now, scheduled, body.reason if body else None, now),
             )
             rid = cur.lastrowid
     except sqlite3.OperationalError:
         raise HTTPException(503, "Reboot subsystem still initializing")
-    return {"id": rid, "status": "approved", "requested_by": actor}
+    return {"id": rid, "status": "approved", "requested_by": actor, "scheduled_unix": scheduled}
 
 
 @router.post("/reboot/{event_id}/approve")
-def reboot_approve(event_id: int, request: Request):
-    """Approve a pending request (for the future degradation-triggered path)."""
+def reboot_approve(event_id: int, request: Request, body: ApproveBody | None = None):
+    """Approve a pending request. body.scheduled_unix optionally overrides the
+    auto-suggested overnight slot with a custom future time before confirming."""
     actor = _actor(request)
     now = int(time.time())
     with get_db_rw() as db:
         row = db.execute(
-            "SELECT status FROM deco_reboot_events WHERE id=?", (event_id,)
+            "SELECT status, scheduled_unix FROM deco_reboot_events WHERE id=?", (event_id,)
         ).fetchone()
         if row is None:
             raise HTTPException(404, "No such reboot request")
         if row["status"] != "pending":
             raise HTTPException(409, f"Request is {row['status']}, not pending")
+        scheduled = body.scheduled_unix if body and body.scheduled_unix is not None else row["scheduled_unix"]
+        if scheduled is not None and scheduled <= now:
+            raise HTTPException(400, "Scheduled time must be in the future")
         db.execute(
             "UPDATE deco_reboot_events SET status='approved', approved_by=?, "
-            "approved_unix=?, updated_unix=? WHERE id=? AND status='pending'",
-            (actor, now, now, event_id),
+            "approved_unix=?, scheduled_unix=?, updated_unix=? WHERE id=? AND status='pending'",
+            (actor, now, scheduled, now, event_id),
         )
-    return {"id": event_id, "status": "approved", "approved_by": actor}
+    return {"id": event_id, "status": "approved", "approved_by": actor, "scheduled_unix": scheduled}
 
 
 @router.post("/reboot/{event_id}/cancel")

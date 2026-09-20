@@ -53,6 +53,18 @@ function fmtAge(unix: number | null): string {
   return `${(s / 86400).toFixed(1)}d ago`
 }
 
+// <input type="datetime-local"> works in the viewer's local time, not UTC --
+// these convert at the boundary so everything else keeps working in epoch seconds.
+function toLocalInputValue(unix: number): string {
+  const d = new Date(unix * 1000)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+function fromLocalInputValue(v: string): number | null {
+  const ms = new Date(v).getTime()
+  return Number.isNaN(ms) ? null : Math.floor(ms / 1000)
+}
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     succeeded: "bg-green-500/20 text-green-400",
@@ -87,6 +99,8 @@ export default function Maintenance() {
   const [idle, setIdle] = useState<IdleState | null>(null)
   const [authUser, setAuthUser] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [customTime, setCustomTime] = useState("")  // 'Schedule for...' next to Reboot now
+  const [pendingTime, setPendingTime] = useState("") // editable override on a pending backstop's suggestion
 
   const load = useCallback(() => {
     Promise.all([
@@ -111,11 +125,15 @@ export default function Maintenance() {
     return () => clearInterval(id)
   }, [load])
 
-  async function post(url: string, confirmMsg?: string) {
-    if (confirmMsg && !confirm(confirmMsg)) return
+  async function post(url: string, opts?: { confirmMsg?: string; body?: unknown }) {
+    if (opts?.confirmMsg && !confirm(opts.confirmMsg)) return
     setBusy(true)
     try {
-      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" } })
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: opts?.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      })
       if (r.status === 401 || r.status === 403) {
         // Not signed in (or not you) — send to GitHub login, then come back.
         signIn()
@@ -142,6 +160,18 @@ export default function Maintenance() {
   const now = Math.floor(Date.now() / 1000)
   const scheduledUpcoming =
     open?.scheduled_unix && open.scheduled_unix > now ? open.scheduled_unix : null
+  const pendingTimeUnix = fromLocalInputValue(pendingTime)
+
+  // Keep the editable suggestion in sync with the server's row -- resets when a
+  // different request opens, and picks up a rolled-forward suggestion too (the
+  // brain advances a still-pending backstop's slot once it passes unapproved).
+  useEffect(() => {
+    if (open?.status === "pending" && open.scheduled_unix) {
+      setPendingTime(toLocalInputValue(open.scheduled_unix))
+    } else {
+      setPendingTime("")
+    }
+  }, [open?.id, open?.status, open?.scheduled_unix])
 
   return (
     <div className="space-y-6">
@@ -162,15 +192,42 @@ export default function Maintenance() {
               <>🔒 <button onClick={signIn} className="underline hover:text-foreground">sign in to make changes</button></>
             )}
           </div>
-          <button
-            onClick={() => post("/api/reboot/request",
-              "Queue a Deco reboot? It won't fire until WiFi is idle; you can cancel it before then.")}
-            disabled={busy || !!open}
-            title={open ? "A reboot request is already in flight" : "Queue an idle-gated reboot now"}
-            className="text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground disabled:opacity-40"
-          >
-            Reboot now
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              type="datetime-local"
+              value={customTime}
+              onChange={(e) => setCustomTime(e.target.value)}
+              min={toLocalInputValue(now + 60)}
+              disabled={busy || !!open}
+              title="Pick a time, then Schedule"
+              className="text-sm px-2 py-2 rounded-md border border-border bg-background disabled:opacity-40"
+            />
+            <button
+              onClick={() => {
+                const t = fromLocalInputValue(customTime)
+                if (t == null) return
+                post("/api/reboot/request", {
+                  confirmMsg: `Schedule a Deco reboot for ${fmtTime(t)}? It'll wait for an idle window at or after that time.`,
+                  body: { scheduled_unix: t },
+                })
+              }}
+              disabled={busy || !!open || fromLocalInputValue(customTime) == null}
+              title={open ? "A reboot request is already in flight" : "Schedule an idle-gated reboot for a specific time"}
+              className="text-sm px-3 py-2 rounded-md border border-border hover:bg-accent disabled:opacity-40"
+            >
+              Schedule
+            </button>
+            <button
+              onClick={() => post("/api/reboot/request", {
+                confirmMsg: "Queue a Deco reboot? It won't fire until WiFi is idle; you can cancel it before then.",
+              })}
+              disabled={busy || !!open}
+              title={open ? "A reboot request is already in flight" : "Queue an idle-gated reboot now"}
+              className="text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground disabled:opacity-40"
+            >
+              Reboot now
+            </button>
+          </div>
         </div>
       </div>
 
@@ -201,10 +258,20 @@ export default function Maintenance() {
           <CardContent className="space-y-3">
             <div className="flex items-center gap-3 flex-wrap">
               <StatusBadge status={open.status} />
-              {scheduledUpcoming && (
+              {open.status === "pending" && open.scheduled_unix ? (
+                <span className="text-sm flex items-center gap-2">
+                  Suggested time:
+                  <input
+                    type="datetime-local"
+                    value={pendingTime}
+                    onChange={(e) => setPendingTime(e.target.value)}
+                    min={toLocalInputValue(now + 60)}
+                    className="text-sm px-2 py-1 rounded-md border border-border bg-background"
+                  />
+                </span>
+              ) : scheduledUpcoming && (
                 <span className="text-sm">
-                  {open.status === "pending" ? "Suggested time: " : "Scheduled: "}
-                  <span className="font-semibold">{fmtTime(scheduledUpcoming)}</span>
+                  Scheduled: <span className="font-semibold">{fmtTime(scheduledUpcoming)}</span>
                   <span className="text-muted-foreground"> (overnight)</span>
                 </span>
               )}
@@ -222,13 +289,16 @@ export default function Maintenance() {
             </p>
             <div className="flex items-center gap-2">
               {open.status === "pending" && (
-                <button onClick={() => post(`/api/reboot/${open.id}/approve`)} disabled={busy}
+                <button
+                  onClick={() => post(`/api/reboot/${open.id}/approve`,
+                    pendingTimeUnix != null ? { body: { scheduled_unix: pendingTimeUnix } } : undefined)}
+                  disabled={busy || (!!open.scheduled_unix && pendingTimeUnix == null)}
                   className="text-sm px-4 py-1.5 rounded-md bg-primary text-primary-foreground disabled:opacity-40">
-                  {open.scheduled_unix ? `OK — schedule ${fmtTime(open.scheduled_unix)}` : "Approve"}
+                  {pendingTimeUnix != null ? `OK — schedule ${fmtTime(pendingTimeUnix)}` : "Approve"}
                 </button>
               )}
               {open.status !== "executing" && (
-                <button onClick={() => post(`/api/reboot/${open.id}/cancel`, "Cancel this reboot request?")} disabled={busy}
+                <button onClick={() => post(`/api/reboot/${open.id}/cancel`, { confirmMsg: "Cancel this reboot request?" })} disabled={busy}
                   className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-accent disabled:opacity-40">
                   {open.status === "pending" ? "Dismiss" : "Cancel"}
                 </button>
