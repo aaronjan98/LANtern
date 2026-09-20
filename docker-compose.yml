@@ -63,18 +63,25 @@ services:
   # host logs read-only; the container runs as root so it can read the adm-group
   # files. No --from-end: on first run it ingests the current logs' history so the
   # Security view has data (and the ongoing brute-force attempts) immediately.
+  #
+  # Mounts the *directory*, not the individual files (like nginx-ingest does):
+  # both auth.log and fail2ban.log rotate via rename+create (not copytruncate),
+  # which orphans a single-file bind mount onto the old inode -- the container
+  # keeps reading a frozen snapshot forever with no error. Bit us 2026-07-18:
+  # ingestion silently stalled for 2 months until a container restart (found
+  # 2026-09-20 while adding the nginx-exploit jail). A directory mount follows
+  # renames within it, so this can't recur.
   security-ingest:
     build: .
     image: lantern:latest
     restart: unless-stopped
     volumes:
-      - /var/log/auth.log:/data/auth.log:ro
-      - /var/log/fail2ban.log:/data/fail2ban.log:ro
+      - /var/log:/data/hostlog:ro
       - lantern_data:/var/lib/lantern
     command: >
       python3 -m lantern.security_ingest
-        --auth-log /data/auth.log
-        --fail2ban-log /data/fail2ban.log
+        --auth-log /data/hostlog/auth.log
+        --fail2ban-log /data/hostlog/fail2ban.log
         --db /var/lib/lantern/lantern.db
         --host sweetpea
 
