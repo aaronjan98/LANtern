@@ -345,6 +345,34 @@ CREATE INDEX IF NOT EXISTS idx_deco_reboot_events_created
 -- per interval, no per-device pings). Lets the People page show remote (Tailscale)
 -- presence alongside on-LAN presence. Keyed by the stable 100.x tailnet IP;
 -- `online` is the live tailnet state.
+-- Jellyfin watch history (qwerty). NOT fed by a colocated ingest container
+-- like everything else here -- Jellyfin's Playback Reporting plugin db lives
+-- on qwerty, a different host, and querying SQLite over the network against a
+-- live writer isn't safe. A small script on qwerty
+-- (qwerty-scripts/jellyfin-lantern-report) reads it locally and pushes new
+-- rows to POST /api/ingest/jellyfin_playback on a timer. host distinguishes
+-- a future second Jellyfin/service instance; the UNIQUE constraint makes
+-- re-pushing an overlapping window (the push script's own idempotency
+-- strategy -- no cursor, just resend a trailing window) a no-op.
+CREATE TABLE IF NOT EXISTS jellyfin_playback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix INTEGER NOT NULL,        -- playback start (Jellyfin's DateCreated)
+    user_id TEXT NOT NULL,           -- normalized Jellyfin UserId (lowercase, no dashes)
+    username TEXT,                   -- resolved display name at ingest time
+    item_id TEXT,
+    item_type TEXT,                  -- Movie | Episode | Audio | ...
+    item_name TEXT,
+    playback_method TEXT,            -- DirectPlay | DirectStream | Transcode (...)
+    client_name TEXT,
+    device_name TEXT,
+    play_duration INTEGER,           -- seconds
+    host TEXT NOT NULL,
+    ingested_unix INTEGER NOT NULL,
+    UNIQUE(host, ts_unix, user_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_jellyfin_playback_time ON jellyfin_playback(ts_unix);
+CREATE INDEX IF NOT EXISTS idx_jellyfin_playback_user_time ON jellyfin_playback(user_id, ts_unix);
+
 CREATE TABLE IF NOT EXISTS tailscale_peers (
     ts_ip TEXT PRIMARY KEY,          -- 100.x tailnet IP (stable device id)
     dns_name TEXT,                   -- MagicDNS short name, e.g. galaxy-zflip-aj (display)

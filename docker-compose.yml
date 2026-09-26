@@ -224,6 +224,10 @@ services:
       - /etc/dnsmasq.d:/data/dnsmasq.d:ro   # resolver blocklist (address=/x/0.0.0.0)
     environment:
       - LANTERN_DB=/var/lib/lantern/lantern.db
+      # Shared secret for POST /api/ingest/* (qwerty's jellyfin-lantern-report
+      # push script has no browser to do the oauth2-proxy login with -- see
+      # api/routes/jellyfin.py and the /api/ingest/ nginx carve-out).
+      - LANTERN_INGEST_TOKEN=${LANTERN_INGEST_TOKEN}
 
   # React UI served by nginx; proxies /api/ to the api container.
   ui:
