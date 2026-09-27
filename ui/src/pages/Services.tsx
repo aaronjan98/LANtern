@@ -51,6 +51,9 @@ const WINDOWS = [
   { label: "Last 24h", value: "24" },
   { label: "Last 7d", value: "168" },
   { label: "Last 30d", value: "720" },
+  { label: "Last 90d", value: "2160" },
+  { label: "Last year", value: "8760" },
+  { label: "All time", value: "87600" },  // 10y -- this data is kept forever
 ]
 
 // Validated categorical palette (dark-mode steps), assigned by a series' fixed
@@ -191,7 +194,7 @@ function HoursPerUserChart({ events, hours }: { events: PlaybackEvent[]; hours: 
       if (!row) continue // outside the generated range (clock skew at the edge)
       row[e.username] = (row[e.username] ?? 0) + e.play_duration / 3600
     }
-    return bucketKeys.map((k) => {
+    const rows = bucketKeys.map((k) => {
       const d = new Date(k)
       const label = unit === "day"
         ? d.toLocaleDateString([], { month: "short", day: "numeric" })
@@ -201,6 +204,13 @@ function HoursPerUserChart({ events, hours }: { events: PlaybackEvent[]; hours: 
       for (const u of allUsers) out[u] = Math.round((row[u] ?? 0) * 100) / 100
       return out
     })
+    // A long/"all time" window reaches well before the real history starts
+    // (Jellyfin history began 2026-06-21) -- drop leading empty buckets so the
+    // chart isn't mostly blank space. Trailing buckets stay even if empty:
+    // that's "up to now," not a data-availability artifact.
+    const firstActive = rows.findIndex((r) =>
+      allUsers.some((u) => (r[u] as number) > 0))
+    return firstActive <= 0 ? rows : rows.slice(firstActive)
   }, [bucketKeys, events, allUsers, unit])
 
   if (allUsers.length === 0) {
@@ -247,7 +257,7 @@ export default function Services() {
       // Fetched once at a size that comfortably covers the chart's full window
       // (not just the "recent activity" table's page) -- the table below
       // slices to the newest 100 of these for display.
-      fetch(`/api/jellyfin/playback?hours=${hours}&limit=1000`).then((r) => r.json()),
+      fetch(`/api/jellyfin/playback?hours=${hours}&limit=20000`).then((r) => r.json()),
     ]).then(([s, e]) => { setSummary(s); setEvents(e) }).catch(() => {})
   }, [hours])
 

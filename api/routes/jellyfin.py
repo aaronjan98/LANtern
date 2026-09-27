@@ -85,9 +85,9 @@ def ingest_jellyfin_playback(body: IngestBody, request: Request):
 
 @router.get("/jellyfin/playback")
 def jellyfin_playback(
-    hours: int = Query(default=168, ge=1, le=8760),
+    hours: int = Query(default=168, ge=1, le=87600),  # up to 10y -- AJ keeps this data forever
     username: str | None = None,
-    limit: int = Query(default=200, le=1000),
+    limit: int = Query(default=200, le=20000),
 ):
     """Recent plays, newest first -- the raw activity table."""
     cutoff = int(time.time()) - hours * 3600
@@ -109,7 +109,7 @@ def jellyfin_playback(
 
 
 @router.get("/jellyfin/summary")
-def jellyfin_summary(hours: int = Query(default=168, ge=1, le=8760)):
+def jellyfin_summary(hours: int = Query(default=168, ge=1, le=87600)):
     """Headline totals + per-user and per-title breakdowns over the window."""
     cutoff = int(time.time()) - hours * 3600
     with get_db() as db:
