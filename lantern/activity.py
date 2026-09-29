@@ -84,9 +84,36 @@ HOMELAB_SERVER_SIDE_IPS = {
 # It never touches the media array, so it is never real usage. Matched as path
 # prefixes because Immich/Nextcloud also live under /api; we drop only LANtern's
 # own routes, not theirs. (2026-07-10)
+#
+# IMPORTANT: every LANtern page that polls its own API needs its prefix added
+# here, or leaving that tab open overnight reads as "busy" and blocks idle-gated
+# jobs. Missed twice already (2026-09-29): the Security tab (15s poll) alone
+# produced 472 req/30min from one open browser tab and was the actual reason a
+# manually-approved Deco reboot sat "waiting for idle" for 3 days straight --
+# LANtern itself was the busy signal. Add the new prefix here in the SAME
+# change that ships a new self-polling page; don't wait to notice it's missing.
 HOMELAB_SELF_PATH_LIKE = (
     "/api/devices%", "/api/dns%", "/api/flows%",
     "/api/stats%", "/api/activity%", "/api/health%",
+    "/api/security%", "/api/reboot%", "/api/jellyfin%",
+)
+
+# Other self-hosted apps' own dashboard/widget auto-refresh -- same "a left-open
+# browser tab isn't a person using the homelab" reasoning as HOMELAB_SELF_PATH_LIKE,
+# just for services LANtern doesn't own. Found 2026-09-29, investigating why an
+# approved Deco reboot sat "waiting for idle" for days:
+#   - Homepage's (home.home) system-resource widgets: 888 req/30min (296 each
+#     for cpu/disk/memory, refreshing every ~6s) -- a monitoring widget checking
+#     machine stats, not anyone using a hosted service.
+#   - Homepage's Navidrome "now playing" widget: 43,665 requests over the prior
+#     30 DAYS straight, one every ~60s with zero gaps (confirmed via min/max
+#     timestamp span vs. count) -- exactly the "constant machine-driven poll,
+#     never a person" signature. On its own this already exceeds the busy
+#     threshold in EVERY 30-min window, so this single widget alone was very
+#     likely the dominant reason the homelab has read "busy" nonstop.
+HOMELAB_BACKGROUND_PATH_LIKE = (
+    "/api/widgets/resources%",
+    "/rest/getNowPlaying%",
 )
 
 # WebDAV/CalDAV/CardDAV sync + CORS preflight methods: automated metadata
@@ -226,7 +253,10 @@ def is_homelab_idle(conn: sqlite3.Connection, now: int | None = None) -> tuple[b
 
     ua_filter = " AND ".join("user_agent NOT LIKE ?" for _ in HOMELAB_BACKGROUND_UA_LIKE)
     ip_ph = ",".join("?" for _ in HOMELAB_SERVER_SIDE_IPS)
-    self_filter = " AND ".join("path NOT LIKE ?" for _ in HOMELAB_SELF_PATH_LIKE)
+    # LANtern's own self-polling + other apps' dashboard/widget self-polling --
+    # same "not a person using anything" reasoning, so one combined exclusion.
+    path_exclusions = HOMELAB_SELF_PATH_LIKE + HOMELAB_BACKGROUND_PATH_LIKE
+    self_filter = " AND ".join("path NOT LIKE ?" for _ in path_exclusions)
     method_ph = ",".join("?" for _ in HOMELAB_SYNC_METHODS)
     stream_expr = " OR ".join("path LIKE ?" for _ in HOMELAB_STREAMING_PATH_LIKE)
     sql = f"""
@@ -248,7 +278,7 @@ def is_homelab_idle(conn: sqlite3.Connection, now: int | None = None) -> tuple[b
     """
     params = [start, bucket_sec, *HOMELAB_STREAMING_PATH_LIKE, start, now,
               *HOMELAB_BACKGROUND_UA_LIKE, *sorted(HOMELAB_SERVER_SIDE_IPS),
-              *HOMELAB_SELF_PATH_LIKE, *HOMELAB_SYNC_METHODS]
+              *path_exclusions, *HOMELAB_SYNC_METHODS]
     rows = conn.execute(sql, params).fetchall()
 
     windows = [{"real_reqs": 0, "streaming": 0} for _ in range(n_windows)]
