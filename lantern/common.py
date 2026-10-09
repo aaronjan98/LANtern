@@ -175,10 +175,16 @@ CREATE TABLE IF NOT EXISTS http_requests (
     user_agent TEXT,
     referer TEXT,
     x_forwarded_for TEXT,
+    host TEXT,              -- vhost ($host), added 2026-10-08; NULL on rows ingested before then
     raw TEXT NOT NULL,
     ingested_unix INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_http_requests_time ON http_requests(ts_unix);
+-- idx_http_requests_host_time is created in _migrate(), not here: on an
+-- existing deployment this CREATE TABLE is a no-op (IF NOT EXISTS), so an
+-- index on `host` here would run before _migrate()'s ALTER adds that column
+-- and fail with "no such column: host". _migrate() creates it unconditionally
+-- once the column is guaranteed to exist either way.
 
 -- Shadow-mode log of the activity oracle's verdicts (lantern.activity_shadow).
 -- Records what the oracle *would* decide, without acting, so thresholds can be
@@ -401,6 +407,11 @@ def _migrate(conn):
     reboot_cols = {row[1] for row in conn.execute("PRAGMA table_info(deco_reboot_events)")}
     if reboot_cols and "scheduled_unix" not in reboot_cols:
         conn.execute("ALTER TABLE deco_reboot_events ADD COLUMN scheduled_unix INTEGER")
+    http_cols = {row[1] for row in conn.execute("PRAGMA table_info(http_requests)")}
+    if http_cols and "host" not in http_cols:
+        conn.execute("ALTER TABLE http_requests ADD COLUMN host TEXT")
+    if http_cols:  # column now exists either way (fresh CREATE TABLE, or just ALTERed)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_http_requests_host_time ON http_requests(host, ts_unix)")
     people_cols = {row[1] for row in conn.execute("PRAGMA table_info(people)")}
     if people_cols:
         if "tailscale_ip" not in people_cols:  # person -> their tailnet device (100.x)

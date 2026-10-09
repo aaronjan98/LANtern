@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { DeviceLabel, useDevices } from "@/lib/devices"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -218,7 +218,11 @@ export default function DNS() {
                   {topDomains.map((d, i) => (
                     <tr key={d.domain} className="hover:bg-accent/30">
                       <td className="px-4 py-2 text-muted-foreground text-xs">{i + 1}</td>
-                      <td className="px-4 py-2 font-mono text-xs">{d.domain}</td>
+                      <td className="px-4 py-2 font-mono text-xs">
+                        <Link to={`/domains/${encodeURIComponent(d.domain)}`} className="hover:underline hover:text-primary">
+                          {d.domain}
+                        </Link>
+                      </td>
                       <td className="px-4 py-2 text-right tabular-nums">{d.queries.toLocaleString()}</td>
                       <td className="px-4 py-2 text-right text-muted-foreground tabular-nums">{d.clients}</td>
                     </tr>

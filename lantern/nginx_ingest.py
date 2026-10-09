@@ -30,12 +30,14 @@ OFFSET_KEY = "nginx.offset"
 # nginx log_format main:
 #   $remote_addr - $remote_user [$time_local] "$request" $status
 #   $body_bytes_sent "$http_referer" "$http_user_agent" "$http_x_forwarded_for"
+#   "$host"   -- added 2026-10-08, see nginx.conf comment
 LINE_RE = re.compile(
     r'^(?P<ip>\S+) - \S+ \[(?P<t>[^\]]+)\] '
     r'"(?P<method>\S+) (?P<path>\S+)[^"]*" '
     r'(?P<status>\d{3}) (?P<bytes>\d+) '
     r'"(?P<ref>[^"]*)" "(?P<ua>[^"]*)"'
-    r'(?: "(?P<xff>[^"]*)")?'  # main format has XFF; per-vhost "combined" does not
+    r'(?: "(?P<xff>[^"]*)")?'   # pre-2026-10-08 lines, or any format lacking it, omit this
+    r'(?: "(?P<host>[^"]*)")?'  # ditto for $host
 )
 
 
@@ -57,6 +59,7 @@ def parse_line(line: str) -> dict | None:
         "referer": m.group("ref") or None,
         "user_agent": m.group("ua") or None,
         "x_forwarded_for": (m.group("xff") or None) if m.group("xff") not in (None, "-") else None,
+        "host": (m.group("host") or None) if m.group("host") not in (None, "-") else None,
         "raw": line.rstrip("\n"),
     }
 
@@ -65,9 +68,9 @@ def _insert(conn, rec: dict) -> None:
     conn.execute(
         """
         INSERT INTO http_requests(ts_unix, client_ip, method, path, status, bytes,
-                                  user_agent, referer, x_forwarded_for, raw, ingested_unix)
+                                  user_agent, referer, x_forwarded_for, host, raw, ingested_unix)
         VALUES (:ts_unix, :client_ip, :method, :path, :status, :bytes,
-                :user_agent, :referer, :x_forwarded_for, :raw, :ingested)
+                :user_agent, :referer, :x_forwarded_for, :host, :raw, :ingested)
         """,
         {**rec, "ingested": int(time.time())},
     )
