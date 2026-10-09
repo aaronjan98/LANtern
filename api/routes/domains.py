@@ -14,8 +14,16 @@ import time
 from fastapi import APIRouter, Query
 
 from api.db import get_db
+from lantern.activity import INFRA_IPS, HOMELAB_SERVER_SIDE_IPS
 
 router = APIRouter()
+
+# Same reasoning as activity.py's own exclusions, applied to "is this client
+# actually a visitor": sweetpea/qwerty/sauron/router calling a vhost (health
+# checks, COOLWSD, etc.) and the docker bridge gateway (Uptime-Kuma's internal
+# probes) are internal plumbing, not a person -- "non-LAN" must not mean
+# "external visitor" if the IP is really just this homelab talking to itself.
+_INFRA_CLIENT_IPS = INFRA_IPS | HOMELAB_SERVER_SIDE_IPS
 
 
 def _path_base_expr(col: str = "path") -> str:
@@ -81,7 +89,13 @@ def domain_clients(
     out = []
     for r in rows:
         d = dict(r)
-        d["is_lan"] = d["client_ip"].startswith("10.0.50.") if d["client_ip"] else False
+        ip = d["client_ip"] or ""
+        if ip in _INFRA_CLIENT_IPS:
+            d["category"] = "infra"
+        elif ip.startswith("10.0.50."):
+            d["category"] = "lan"
+        else:
+            d["category"] = "external"
         out.append(d)
     return out
 

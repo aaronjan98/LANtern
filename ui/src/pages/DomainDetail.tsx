@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate, Link } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -27,7 +27,7 @@ interface ClientRow {
   requests: number
   distinct_user_agents: number
   last_seen: number
-  is_lan: boolean
+  category: "lan" | "infra" | "external"
 }
 
 interface PathRow {
@@ -109,7 +109,7 @@ export default function DomainDetail() {
     return () => clearInterval(id)
   }, [load])
 
-  const topExternal = clients.filter((c) => !c.is_lan)[0] ?? null
+  const topExternal = clients.filter((c) => c.category === "external")[0] ?? null
 
   return (
     <div className="space-y-6">
@@ -140,7 +140,7 @@ export default function DomainDetail() {
         <StatCard title="Requests" value={summary?.requests?.toLocaleString() ?? "—"} />
         <StatCard title="Unique clients" value={summary?.clients ?? "—"} />
         <StatCard title="First seen" value={summary?.first_seen ? fmtTime(summary.first_seen) : "—"} />
-        <StatCard title="Top non-LAN visitor"
+        <StatCard title="Top external visitor"
           value={topExternal?.client_ip ?? "none"}
           sub={topExternal ? `${topExternal.requests} requests` : "no outside traffic in this window"} />
       </div>
@@ -166,24 +166,36 @@ export default function DomainDetail() {
               {clients.length === 0 && (
                 <p className="text-muted-foreground text-sm px-6 py-4">No activity in this window.</p>
               )}
-              {clients.map((c) => (
-                <div key={c.client_ip} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${c.is_lan ? "bg-zinc-500" : "bg-amber-400"}`}
-                    title={c.is_lan ? "LAN device" : "outside your network"} />
-                  <span className="font-medium w-36 shrink-0 truncate">
-                    {c.label || c.hostname || c.client_ip}
-                  </span>
-                  <span className="text-xs text-muted-foreground w-24 shrink-0 font-mono truncate">
-                    {c.client_ip}
-                  </span>
-                  <span className="text-xs text-muted-foreground w-16 shrink-0 tabular-nums text-right">
-                    {c.requests.toLocaleString()}
-                  </span>
-                  <span className="text-xs text-muted-foreground truncate">
-                    last {fmtTime(c.last_seen)}
-                  </span>
-                </div>
-              ))}
+              {clients.map((c) => {
+                const dotCls = c.category === "external" ? "bg-amber-400"
+                  : c.category === "infra" ? "bg-zinc-600" : "bg-zinc-500"
+                const dotTitle = c.category === "external" ? "outside your network"
+                  : c.category === "infra" ? "internal infrastructure (not a visitor)" : "LAN device"
+                return (
+                  <div key={c.client_ip} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dotCls}`} title={dotTitle} />
+                    <span className="font-medium w-36 shrink-0 truncate">
+                      {c.label || c.hostname || c.client_ip}
+                    </span>
+                    {c.category === "external" ? (
+                      <Link to={`/ip/${encodeURIComponent(c.client_ip)}`}
+                        className="text-xs w-24 shrink-0 font-mono truncate hover:underline hover:text-primary">
+                        {c.client_ip}
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-muted-foreground w-24 shrink-0 font-mono truncate">
+                        {c.client_ip}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground w-16 shrink-0 tabular-nums text-right">
+                      {c.requests.toLocaleString()}
+                    </span>
+                    <span className="text-xs text-muted-foreground truncate">
+                      last {fmtTime(c.last_seen)}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>

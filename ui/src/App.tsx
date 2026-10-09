@@ -11,6 +11,7 @@ import Internet from "@/pages/Internet"
 import Maintenance from "@/pages/Maintenance"
 import Services from "@/pages/Services"
 import DomainDetail from "@/pages/DomainDetail"
+import IPDetail from "@/pages/IPDetail"
 
 const navItems = [
   { to: "/", label: "Overview", exact: true },
@@ -73,6 +74,7 @@ export default function App() {
               <Route path="/maintenance" element={<Maintenance />} />
               <Route path="/services" element={<Services />} />
               <Route path="/domains/:domain" element={<DomainDetail />} />
+              <Route path="/ip/:ip" element={<IPDetail />} />
             </Routes>
           </main>
         </div>

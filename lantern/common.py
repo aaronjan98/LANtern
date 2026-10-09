@@ -390,6 +390,33 @@ CREATE TABLE IF NOT EXISTS tailscale_peers (
     last_seen_unix INTEGER,
     updated_unix INTEGER NOT NULL
 );
+
+-- Cached IP enrichment (ASN/ISP/org, coarse geo, reverse DNS) for external
+-- visitors surfaced on the domain-detail page -- "who's hitting my Nextcloud
+-- share links" (2026-10-09). Looked up on demand (api/routes/ip_intel.py),
+-- never eagerly for every client row, and cached indefinitely per IP: ASN/org
+-- allocation changes rarely enough that re-querying ip-api.com on every page
+-- view would just burn its free-tier rate limit (45 req/min) for no benefit.
+-- Ceiling on what this can ever tell you: ISP/carrier + city-level geo, never
+-- a person -- mobile carrier IPs especially can geolocate to a regional
+-- gateway, not the phone's actual location.
+CREATE TABLE IF NOT EXISTS ip_intel (
+    ip TEXT PRIMARY KEY,
+    asn TEXT,
+    org TEXT,
+    isp TEXT,
+    city TEXT,
+    region TEXT,
+    country TEXT,
+    country_code TEXT,
+    lat REAL,
+    lon REAL,
+    timezone TEXT,
+    ptr_hostname TEXT,
+    is_private INTEGER NOT NULL DEFAULT 0,  -- RFC1918 etc. -- enrichment is meaningless, don't re-query
+    error TEXT,                             -- set + cached on a lookup failure, so we don't retry every click
+    looked_up_unix INTEGER NOT NULL
+);
 """
 
 

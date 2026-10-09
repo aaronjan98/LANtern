@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.db import DB_PATH
 from api.routes import (
     stats, devices, dns, flows, activity, security, internet, people, reboot,
-    jellyfin, domains,
+    jellyfin, domains, ip_intel,
 )
 
 app = FastAPI(title="LANtern API", version="0.1.0")
@@ -36,6 +36,7 @@ app.include_router(people.router, prefix="/api")
 app.include_router(reboot.router, prefix="/api")
 app.include_router(jellyfin.router, prefix="/api")
 app.include_router(domains.router, prefix="/api")
+app.include_router(ip_intel.router, prefix="/api")
 
 
 @app.get("/api/health")
