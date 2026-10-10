@@ -114,6 +114,14 @@ HOMELAB_SELF_PATH_LIKE = (
 HOMELAB_BACKGROUND_PATH_LIKE = (
     "/api/widgets/resources%",
     "/rest/getNowPlaying%",
+    # Nextcloud's own web UI polls its notification bell + "user is active"
+    # heartbeat every ~30s whenever a tab is open -- found 2026-10-10: one
+    # browser (10.0.50.189) left cloud.janovitch.com open had been doing this
+    # continuously since 2026-09-19 (4,814 requests over 3 weeks, still live),
+    # alone enough to fail every overnight idle check that whole time. Same
+    # "a left-open tab isn't a person" shape as the other entries here.
+    "%/apps/notifications/api/v2/notifications%",
+    "%/apps/user_status/api/v1/heartbeat%",
 )
 
 # WebDAV/CalDAV/CardDAV sync + CORS preflight methods: automated metadata
