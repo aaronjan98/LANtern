@@ -222,6 +222,11 @@ services:
     volumes:
       - lantern_data:/var/lib/lantern
       - /etc/dnsmasq.d:/data/dnsmasq.d:ro   # resolver blocklist (address=/x/0.0.0.0)
+      # Read-write: POST /api/security/unban runs fail2ban-client against this
+      # socket directly. No userns-remap on this host (security-ingest already
+      # runs as root to read adm-group-only host logs the same way), so the
+      # container's root matches the host's and the socket's perms just work.
+      - /var/run/fail2ban/fail2ban.sock:/var/run/fail2ban/fail2ban.sock
     environment:
       - LANTERN_DB=/var/lib/lantern/lantern.db
       # Shared secret for POST /api/ingest/* (qwerty's jellyfin-lantern-report

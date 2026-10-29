@@ -2,6 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# fail2ban-client only -- for POST /api/security/unban, which drives the real
+# fail2ban socket (bind-mounted in, see docker-compose.yml) instead of the
+# container trying to reimplement its protocol. The package also installs
+# fail2ban-server + its systemd unit, which is fine: nothing starts it here,
+# we only ever invoke the client binary against the host's socket.
+RUN apt-get update && apt-get install -y --no-install-recommends fail2ban \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react"
 import { DeviceLabel } from "@/lib/devices"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface Summary {
@@ -74,6 +75,7 @@ export default function Security() {
   const [attackers, setAttackers] = useState<Attacker[]>([])
   const [logins, setLogins] = useState<Login[]>([])
   const [bans, setBans] = useState<Ban[]>([])
+  const [unbanning, setUnbanning] = useState<string | null>(null)
 
   const load = useCallback(() => {
     Promise.all([
@@ -89,6 +91,25 @@ export default function Security() {
     const id = setInterval(load, 15000)
     return () => clearInterval(id)
   }, [load])
+
+  async function unban(ip: string) {
+    if (!confirm(`Unban ${ip}? This lifts the fail2ban block across every jail immediately.`)) return
+    setUnbanning(ip)
+    try {
+      const r = await fetch("/api/security/unban", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip }),
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        alert(body.detail || `Unban failed (${r.status})`)
+      }
+    } finally {
+      setUnbanning(null)
+      load()
+    }
+  }
 
   const evaders = attackers.filter((a) => !a.banned && a.attempts >= EVADER_MIN_ATTEMPTS)
   const coverage = summary?.coverage_pct
@@ -177,13 +198,25 @@ export default function Security() {
                     </td>
                     <td className="px-4 py-2 text-xs text-muted-foreground">{fmtTime(a.last_seen)}</td>
                     <td className="px-4 py-2">
-                      {a.banned ? (
-                        <Badge className="bg-green-500/20 text-green-400 border-0">banned</Badge>
-                      ) : a.attempts >= EVADER_MIN_ATTEMPTS ? (
-                        <Badge className="bg-red-500/20 text-red-400 border-0">evading</Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground">not banned</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {a.banned ? (
+                          <Badge className="bg-green-500/20 text-green-400 border-0">banned</Badge>
+                        ) : a.attempts >= EVADER_MIN_ATTEMPTS ? (
+                          <Badge className="bg-red-500/20 text-red-400 border-0">evading</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-muted-foreground">not banned</Badge>
+                        )}
+                        {a.banned && (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={unbanning === a.src_ip}
+                            onClick={() => unban(a.src_ip)}
+                          >
+                            {unbanning === a.src_ip ? "Unbanning…" : "Unban"}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -3,13 +3,28 @@
 Reads ssh_events / fail2ban_events (fed by lantern.security_ingest). The headline
 question is "is fail2ban working?": /security/summary puts attack attempts next to
 bans so you can see whether the attackers actually got caught.
+
+/security/unban is the one write path: it shells out to the real fail2ban-client
+against the bind-mounted host socket (see docker-compose.yml) rather than touching
+fail2ban_events directly — the resulting "Unban" log line is picked up by the
+existing security-ingest tail on its own next poll, so history stays truthful to
+what fail2ban itself did.
 """
 
+import ipaddress
+import subprocess
 import time
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 from api.db import get_db
 
 router = APIRouter()
+
+FAIL2BAN_SOCKET = "/var/run/fail2ban/fail2ban.sock"
+
+
+class UnbanBody(BaseModel):
+    ip: str
 
 ATTACK_EVENTS = ("failed", "invalid", "preauth")
 BAN_ACTIONS = ("Ban", "Increase Ban", "Restore Ban")
@@ -152,3 +167,37 @@ def security_bans(
             (cutoff, limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+@router.post("/security/unban")
+def security_unban(body: UnbanBody):
+    """Manually unban an IP (across every jail) via the real fail2ban-client.
+
+    Needed because this session's own egress IP got caught by the sshd jail's
+    aggressive mode during a burst of rapid SSH reconnects — a false positive
+    worth a one-click fix from the dashboard instead of an SSH session just to
+    run `fail2ban-client unban`.
+    """
+    try:
+        ip = str(ipaddress.ip_address(body.ip))
+    except ValueError:
+        raise HTTPException(400, f"Not a valid IP address: {body.ip!r}")
+
+    try:
+        result = subprocess.run(
+            ["fail2ban-client", "-s", FAIL2BAN_SOCKET, "unban", ip],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except FileNotFoundError:
+        raise HTTPException(503, "fail2ban-client not available in this container")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "fail2ban-client timed out")
+
+    detail = (result.stdout or result.stderr or "").strip()
+    if result.returncode != 0:
+        # fail2ban-client exits non-zero when the IP isn't currently banned
+        # anywhere — not a server error, just nothing to do.
+        raise HTTPException(404, detail or f"{ip} is not currently banned")
+    return {"ip": ip, "ok": True, "detail": detail}
