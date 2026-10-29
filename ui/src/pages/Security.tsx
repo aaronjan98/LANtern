@@ -101,6 +101,11 @@ export default function Security() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ip }),
       })
+      if (r.status === 401 || r.status === 403) {
+        // Not signed in -- same oauth2-proxy gate Maintenance.tsx handles.
+        window.location.href = `/oauth2/sign_in?rd=${encodeURIComponent(location.pathname)}`
+        return
+      }
       if (!r.ok) {
         const body = await r.json().catch(() => ({}))
         alert(body.detail || `Unban failed (${r.status})`)

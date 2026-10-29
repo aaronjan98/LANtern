@@ -196,8 +196,11 @@ def security_unban(body: UnbanBody):
         raise HTTPException(504, "fail2ban-client timed out")
 
     detail = (result.stdout or result.stderr or "").strip()
-    if result.returncode != 0:
-        # fail2ban-client exits non-zero when the IP isn't currently banned
-        # anywhere — not a server error, just nothing to do.
-        raise HTTPException(404, detail or f"{ip} is not currently banned")
+    # fail2ban-client exits 0 either way and reports the jail count it
+    # actually removed the IP from -- "0" means it wasn't banned anywhere,
+    # which isn't a server error, just nothing to do. (Verified against the
+    # live socket: unbanning an untracked IP returns 200/"0", unbanning a
+    # real banned IP returns 200/"1" and the IP leaves `status sshd`'s list.)
+    if result.returncode != 0 or detail == "0":
+        raise HTTPException(404, detail if detail != "0" else f"{ip} is not currently banned")
     return {"ip": ip, "ok": True, "detail": detail}
