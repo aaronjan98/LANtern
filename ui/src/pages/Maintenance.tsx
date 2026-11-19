@@ -21,6 +21,7 @@ interface RebootEvent {
   ready_unix: number | null
   executed_unix: number | null
   finished_unix: number | null
+  updated_unix: number
   result: string | null
   idle_evidence: { internet?: { headline?: string }; homelab?: { headline?: string } } | null
   tunnel_before: string | null
@@ -45,12 +46,13 @@ function fmtTime(unix: number) {
   })
 }
 
-// History should show when a run actually happened, not created_unix (the
-// moment the request/schedule was made). finished_unix is set when the
-// runner completes (succeeded/failed); fall back to executed_unix (power-cycle
-// start) for an in-flight row, and only to created_unix for one that never ran.
+// History should show when a row last actually changed state, not
+// created_unix (the moment the request/schedule was made). updated_unix is
+// bumped on every transition -- approve, ready, executing, finished, cancel --
+// so it's always the real timestamp for whatever status is currently shown,
+// unlike finished_unix/executed_unix which stay null until the row gets there.
 function historyTime(e: RebootEvent): number {
-  return e.finished_unix ?? e.executed_unix ?? e.created_unix
+  return e.updated_unix
 }
 
 function fmtAge(unix: number | null): string {
