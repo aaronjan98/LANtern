@@ -45,6 +45,14 @@ function fmtTime(unix: number) {
   })
 }
 
+// History should show when a run actually happened, not created_unix (the
+// moment the request/schedule was made). finished_unix is set when the
+// runner completes (succeeded/failed); fall back to executed_unix (power-cycle
+// start) for an in-flight row, and only to created_unix for one that never ran.
+function historyTime(e: RebootEvent): number {
+  return e.finished_unix ?? e.executed_unix ?? e.created_unix
+}
+
 function fmtAge(unix: number | null): string {
   if (!unix) return "—"
   const s = Math.max(0, Math.floor(Date.now() / 1000) - unix)
@@ -328,7 +336,7 @@ export default function Maintenance() {
               return (
                 <div key={e.id} className="flex items-start gap-4 px-4 py-2.5">
                   <span className="text-muted-foreground text-xs w-28 shrink-0 tabular-nums pt-0.5">
-                    {fmtTime(e.created_unix)}
+                    {fmtTime(historyTime(e))}
                   </span>
                   <span className="w-24 shrink-0"><StatusBadge status={e.status} /></span>
                   <span className="text-xs text-muted-foreground w-32 shrink-0">
